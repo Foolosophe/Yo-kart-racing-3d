@@ -930,19 +930,10 @@ export class Track {
             baseElevation: 0
         });
 
-        // Identifier la zone pont en indices de segments
-        // tNorm = 0.38 → i = (0.38 - 0.75 + 1.0) * 500 = 315
-        // tNorm = 0.62 → i = (0.62 - 0.75 + 1.0) * 500 = 435
-        const bridgeStartIdx = 315;
-        const bridgeEndIdx = 435;
-
-        // Metadata pour les systèmes (élévation, mesh, murs) :
-        // Les segments ground[315-435] sont "waypoint-only" (pas une surface physique)
-        this.bridgeZone = {
-            groundStartIdx: bridgeStartIdx,
-            groundEndIdx: bridgeEndIdx,
-            bridgeSegments: bridgeEndIdx - bridgeStartIdx
-        };
+        // Les bornes de la zone pont sont calculees dynamiquement pendant la generation
+        // (pas hardcodees) pour correspondre exactement aux segments couverts par le bridge
+        let bridgeFirstIdx = -1;
+        let bridgeLastIdx = -1;
 
         // Générer les segments EN COMMENÇANT par la position de départ
         // Ainsi segment 0 = départ, et les checkpoints à 25%, 50%, 75% sont dans l'ordre
@@ -976,6 +967,9 @@ export class Track {
             // BRIDGE : seulement dans la zone pont
             const bridgeY = getBridgeElevation(tNorm);
             if (bridgeY > 0) {
+                // Tracker les bornes exactes de la zone pont
+                if (bridgeFirstIdx < 0) bridgeFirstIdx = i;
+                bridgeLastIdx = i;
                 // Élévation pont : hauteur fixe = relief_max (10) + bridgeHeight (12) = 22m
                 // Avec rampe progressive (smoothstep)
                 const bridgeBaseHeight = 10 + bridgeHeight;  // 22m au sommet
@@ -991,6 +985,14 @@ export class Track {
             }
         }
 
+        // Metadata bridgeZone : bornes exactes calculees depuis la generation
+        // Ces segments ground sont "waypoint-only" (exclus de elevation, mesh, murs)
+        this.bridgeZone = {
+            groundStartIdx: bridgeFirstIdx,
+            groundEndIdx: bridgeLastIdx,
+            bridgeSegments: bridgeBranch.segmentCount
+        };
+
         // Générer les waypoints (ground = boucle complète pour navigation IA)
         groundBranch.generateWaypoints(5);
 
@@ -999,7 +1001,7 @@ export class Track {
         this.graph.addBranch(bridgeBranch);
 
         console.log(`[Infini] Figure-8 créé : ground=${groundBranch.segmentCount} segments, bridge=${bridgeBranch.segmentCount} segments`);
-        console.log(`[Infini] Bridge zone: ground[${bridgeStartIdx}-${bridgeEndIdx}] = waypoint-only`);
+        console.log(`[Infini] Bridge zone: ground[${bridgeFirstIdx}-${bridgeLastIdx}] = waypoint-only`);
         console.log(`[Infini] Dimensions: X=${(baseRadius * s1 * 2).toFixed(0)}, Z=${(scaleZ * 2).toFixed(0)}`);
         console.log(`[Infini] Départ: (${this.startX.toFixed(1)}, ${this.startZ.toFixed(1)})`);
         console.log(`[Infini] Ground elevation: min=${Math.min(...groundBranch.segments.map(s => s.y)).toFixed(2)}, max=${Math.max(...groundBranch.segments.map(s => s.y)).toFixed(2)}`);
@@ -1340,16 +1342,16 @@ export class Track {
                 bridgeVertices[off + 12] = outer2.x; bridgeVertices[off + 13] = outer2.y + 0.1; bridgeVertices[off + 14] = outer2.z;
                 bridgeVertices[off + 15] = inner2.x; bridgeVertices[off + 16] = inner2.y + 0.1; bridgeVertices[off + 17] = inner2.z;
 
-                // Couleur pont (gris-bleu distinctif)
+                // Couleur pont : meme formule que le ground mesh
                 const avgY = (y1 + y2) / 2;
-                const heightRatio = Math.min(avgY / 25, 1);
-                const r = (0x55 + Math.floor(heightRatio * 0x20)) / 255;
-                const g = (0x55 + Math.floor(heightRatio * 0x20)) / 255;
-                const b = (0x77 + Math.floor(heightRatio * 0x20)) / 255;
+                const heightRatio = Math.min(avgY / maxY3D, 1);
+                const baseGray = (0x40 + Math.floor(heightRatio * 0x30)) / 255;
+                const stripe = (Math.floor(i / 5) % 2 === 0 ? 0x10 : 0x00) / 255;
+                const gray = baseGray + stripe;
                 for (let v = 0; v < 6; v++) {
-                    bridgeColors[off + v * 3]     = r;
-                    bridgeColors[off + v * 3 + 1] = g;
-                    bridgeColors[off + v * 3 + 2] = b;
+                    bridgeColors[off + v * 3]     = gray;
+                    bridgeColors[off + v * 3 + 1] = gray;
+                    bridgeColors[off + v * 3 + 2] = gray;
                 }
 
                 bridgeValid++;
@@ -1748,7 +1750,8 @@ export class Track {
         const boostPadDefinitions = this.getBoostPadDefinitions();
 
         for (const def of boostPadDefinitions) {
-            // Trouver le segment le plus proche pour obtenir l'élévation
+            // Trouver l'élévation via le système multi-branches (closest floor below)
+            // Utilise get3DElevationAt pour obtenir la bonne surface (sol ou pont)
             const branch = this.graph.getActiveBranch();
             let elevation = 1;
             let trackAngle = def.angle;
@@ -1756,7 +1759,8 @@ export class Track {
             if (branch) {
                 const closest = branch.findClosestSegment(def.x, def.z);
                 if (closest.index >= 0 && closest.index < branch.segments.length) {
-                    elevation = branch.segments[closest.index].y + 0.1;
+                    // Elevation via le systeme multi-branches (retourne pont si dans la zone pont)
+                    elevation = this.get3DElevationAt(def.x, def.z, null, 99);
 
                     // Calculer l'angle de la piste à cet endroit
                     const nextIdx = (closest.index + 1) % branch.segments.length;

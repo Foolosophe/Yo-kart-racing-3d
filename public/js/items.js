@@ -403,7 +403,10 @@ export class ItemManager {
             const perpX = -dz / len;
             const perpZ = dx / len;
 
-            const y = point.y || 0;
+            // Elevation via le systeme multi-branches (retourne pont si dans la zone pont)
+            const baseY = (track.get3DElevationAt)
+                ? track.get3DElevationAt(point.x, point.z, null, 99)
+                : (point.y || 0);
 
             // Créer 3 boîtes alignées perpendiculairement
             for (let j = 0; j < boxesPerGroup; j++) {
@@ -412,7 +415,7 @@ export class ItemManager {
                 const x = point.x + perpX * offset;
                 const z = point.z + perpZ * offset;
 
-                const box = new ItemBox(this.scene, x, y, z);
+                const box = new ItemBox(this.scene, x, baseY, z);
                 this.itemBoxes.push(box);
             }
         }
