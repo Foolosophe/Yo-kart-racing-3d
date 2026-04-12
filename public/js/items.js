@@ -404,8 +404,9 @@ export class ItemManager {
             const perpZ = dx / len;
 
             // Elevation via le systeme multi-branches (retourne pont si dans la zone pont)
+            // currentY=100 → "closest floor below" prend la surface la plus haute (visible)
             const baseY = (track.get3DElevationAt)
-                ? track.get3DElevationAt(point.x, point.z, null, 99)
+                ? track.get3DElevationAt(point.x, point.z, 100, 99)
                 : (point.y || 0);
 
             // Créer 3 boîtes alignées perpendiculairement

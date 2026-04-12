@@ -985,11 +985,12 @@ export class Track {
             }
         }
 
-        // Metadata bridgeZone : bornes exactes calculees depuis la generation
-        // Ces segments ground sont "waypoint-only" (exclus de elevation, mesh, murs)
+        // Metadata bridgeZone : bornes resserrees d'1 segment de chaque cote
+        // pour que le ground mesh couvre les quads de transition (raccord sol/pont).
+        // Le bridge mesh chevauche legerement aux bords (bridge Y ≈ ground Y, invisible).
         this.bridgeZone = {
-            groundStartIdx: bridgeFirstIdx,
-            groundEndIdx: bridgeLastIdx,
+            groundStartIdx: bridgeFirstIdx + 1,
+            groundEndIdx: bridgeLastIdx - 1,
             bridgeSegments: bridgeBranch.segmentCount
         };
 
@@ -1649,16 +1650,16 @@ export class Track {
                     p2.x + nx, y1Top, p2.z + nz
                 );
 
-                // Couleur pont (gris-violet)
+                // Couleur pont : meme que les murs ground (rouge inner, gris outer)
                 const heightRatio = use3DRelief ? Math.min(avgElevation / maxY3D, 1) : 0.5;
                 let r, g, b;
                 if (isInner) {
-                    r = (0x99 + Math.floor(heightRatio * 0x33)) / 255;
-                    g = 0x44 / 255;
-                    b = (0x99 + Math.floor(heightRatio * 0x22)) / 255;
+                    r = (0x99 + Math.floor(heightRatio * 0x44)) / 255;
+                    g = 0x22 / 255;
+                    b = 0x22 / 255;
                 } else {
-                    const gray = (0xaa + Math.floor(heightRatio * 0x22)) / 255;
-                    r = gray; g = gray; b = (0xbb + Math.floor(heightRatio * 0x22)) / 255;
+                    const gray = (0xbb + Math.floor(heightRatio * 0x33)) / 255;
+                    r = g = b = gray;
                 }
                 for (let v = 0; v < 18; v++) {
                     wallColors.push(r, g, b);
@@ -1759,8 +1760,9 @@ export class Track {
             if (branch) {
                 const closest = branch.findClosestSegment(def.x, def.z);
                 if (closest.index >= 0 && closest.index < branch.segments.length) {
-                    // Elevation via le systeme multi-branches (retourne pont si dans la zone pont)
-                    elevation = this.get3DElevationAt(def.x, def.z, null, 99);
+                    // Elevation via le systeme multi-branches
+                    // currentY=100 → "closest floor below" prend la surface la plus haute (visible)
+                    elevation = this.get3DElevationAt(def.x, def.z, 100, 99);
 
                     // Calculer l'angle de la piste à cet endroit
                     const nextIdx = (closest.index + 1) % branch.segments.length;
