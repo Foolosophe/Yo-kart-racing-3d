@@ -2166,23 +2166,28 @@ export class Track {
             return this._interpolateElevation(activeBranch, segIdx, x, z);
         }
 
-        // Multi-branches : chercher dans chaque branche le segment surface le plus proche
+        // Multi-branches : branche active = base du monde (toujours un candidat),
+        // branches superposées = filtrées par distance
         const candidates = [];
-        const maxDistSq = 900; // 30 unités max en XZ
+        const overlayMaxDistSq = 900; // 30 unités — seuil pour les branches superposées
+        const activeBranchId = this.graph.activeBranchId;
 
         for (const [branchId, branch] of this.graph.branches) {
             const segIdx = this._findClosestSurfaceSegment(branch, branchId, x, z, callerId);
             if (segIdx < 0) continue;
 
-            const seg = branch.segments[segIdx];
-            const distSq = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
-            if (distSq > maxDistSq) continue;
+            // Branches superposées : filtre distance (pertinentes seulement à proximité)
+            if (branchId !== activeBranchId) {
+                const seg = branch.segments[segIdx];
+                const distSq = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
+                if (distSq > overlayMaxDistSq) continue;
+            }
 
             const y = this._interpolateElevation(branch, segIdx, x, z);
             candidates.push(y);
         }
 
-        // Aucun candidat : fallback legacy
+        // La branche active répond toujours — ce cas ne devrait plus arriver
         if (candidates.length === 0) {
             return this.getElevationAt(x, z);
         }
@@ -2374,12 +2379,14 @@ export class Track {
             return this._buildTrackPointResult(activeBranch, segIdx, x, z);
         }
 
-        // Multi-branches : chercher le meilleur candidat "closest floor below"
+        // Multi-branches : branche active = base du monde (toujours candidat),
+        // branches superposées = filtrées par distance
         let bestBranch = null;
         let bestSegIdx = -1;
         let bestY = -Infinity;
         let bestDistSq = Infinity;
-        const maxDistSq = 900; // 30 unités
+        const overlayMaxDistSq = 900; // 30 unités — seuil pour les branches superposées
+        const activeBranchId = this.graph.activeBranchId;
 
         for (const [branchId, branch] of this.graph.branches) {
             const segIdx = this._findClosestSurfaceSegment(branch, branchId, x, z, callerId);
@@ -2387,7 +2394,9 @@ export class Track {
 
             const seg = branch.segments[segIdx];
             const distSq = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
-            if (distSq > maxDistSq) continue;
+
+            // Branches superposées : filtre distance
+            if (branchId !== activeBranchId && distSq > overlayMaxDistSq) continue;
 
             const segY = seg.y;
 
@@ -2409,9 +2418,9 @@ export class Track {
             }
         }
 
+        // La branche active répond toujours — fallback ne devrait plus arriver
         if (!bestBranch || bestSegIdx < 0) {
-            // Fallback sur la branche active
-            const segIdx = this._findClosestSurfaceSegment(activeBranch, 'fallback', x, z, callerId);
+            const segIdx = this._findClosestSurfaceSegment(activeBranch, activeBranchId, x, z, callerId);
             if (segIdx < 0) return null;
             return this._buildTrackPointResult(activeBranch, segIdx, x, z);
         }
