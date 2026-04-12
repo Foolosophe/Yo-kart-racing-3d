@@ -208,8 +208,8 @@ pas de transitions. Purement geometrique.
 1. Pour chaque branche du graphe :
    a. _findClosestSurfaceSegment : trouver le segment surface le plus proche en XZ
       (exclut les segments "waypoint-only" de la branche de base dans la zone pont)
-   b. Branche de base : TOUJOURS incluse (pas de filtre distance)
-      Branches superposees : incluses seulement si distSq < 900 (30 unites)
+   b. Branche de base : TOUJOURS incluse (pas de filtre)
+      Branches superposees : incluses seulement si _isOnBranchSurface = true
    c. _interpolateElevation : interpolation bilineaire sur le quad → candidat Y
 
 2. Selection du candidat :
@@ -219,9 +219,26 @@ pas de transitions. Purement geometrique.
    - Pas de currentY (items, init) → prendre le plus bas (sol)
 ```
 
-**Pourquoi base sans filtre distance** : la branche de base est le sol du monde.
-Elle doit TOUJOURS repondre, meme si le kart est sur une structure superposee.
-Sinon, si les deux branches sont trop loin → aucun candidat → chute a Y=0.
+**Branche de base = toujours presente** : le sol du monde repond toujours,
+meme si le kart est sur une structure. Sinon → aucun candidat → chute a Y=0.
+
+**Branches superposees = test geometrique** (`_isOnBranchSurface`) :
+Au lieu d'un seuil de distance (fragile — ne distingue pas "sur le pont" de
+"a cote du pont"), on projette le kart sur le quad de la branche et on verifie
+que la projection tombe DANS la surface :
+```
+t = projection le long de la piste  → doit etre dans [-0.5, 1.5]
+s = projection d'un bord a l'autre  → doit etre dans [-0.65, 0.65]
+```
+Si le kart est sur le pont (meme au bord) : s ≈ 0 a 0.5 → accepte.
+Si le kart est au virage a cote : s >> 0.65 → rejete. Pas de faux positif.
+
+**Pourquoi pas un seuil de distance :**
+Un seuil de distance mesure "est-ce que le kart est proche du pont ?"
+Mais "proche" n'est pas "dessus". Un kart au bord du pont (40m du centre)
+et un kart au virage a cote (40m du centre) sont a la meme distance.
+Le test geometrique repond a la bonne question : "est-ce que le kart est
+entre le bord gauche et le bord droit du pont ?"
 
 **_findClosestSurfaceSegment** — recherche par branche :
 ```
@@ -505,7 +522,7 @@ La camera suit l'elevation du kart naturellement.
 - Vertex colors calcules depuis la hauteur (gris clair en haut, fonce en bas)
 
 **Branches superposees** = 1 BufferGeometry par branche :
-- Mesh separe avec ses propres vertex colors (gris-bleu pour le pont)
+- Mesh separe avec meme couleur que la base (gris, pas de couleur distincte)
 - Piliers generes automatiquement tous les 10 segments (si Y > 5m)
 
 **Murs** = 2 meshes fusionnes par branche (inner + outer).
@@ -578,7 +595,7 @@ ils restent a la hauteur de depot (pas de mise a jour dynamique).
 | Waypoint IA XZ | waypointRadius (40 Infini) | Distance pour valider un waypoint |
 | Checkpoint joueur along | 4 unites | Profondeur zone de detection |
 | Checkpoint IA along | 2 unites | Plus strict que le joueur |
-| Overlay distance | 900 (30m) dist² | Seuil pour branches superposees |
+| Overlay surface check | s ∈ [-0.65, 0.65], t ∈ [-0.5, 1.5] | Test geometrique (pas de seuil distance) |
 | Fallback segment search | 400 (20m) dist² | Declenche scan complet dans une branche |
 | Recherche locale | ±80 segments | Rayon du cache par branche |
 | Mur collision Y | ±10m | Ignore les murs trop loin en elevation |
@@ -692,7 +709,8 @@ en prenant Infini comme modele. Chaque etape est necessaire.
 - `_trackPtCache`, `_onTrackCache` : par callerId (0=joueur, 1=IA)
 - `searchRange = 80` segments : rayon de recherche locale par branche
 - `fallback threshold = 400` (20m dist²) : declenche scan complet dans une branche
-- `overlayMaxDistSq = 900` (30m dist²) : seuil pour branches superposees dans get3DElevationAt
+- `_isOnBranchSurface` : test geometrique pour branches superposees (pas de seuil distance)
+  - Projette le kart sur le quad et verifie s ∈ [-0.65, 0.65] et t ∈ [-0.5, 1.5]
   - NE S'APPLIQUE PAS a la branche de base (elle repond toujours)
 - `clear()` reset tous les caches + bridgeZone a chaque changement de circuit
 

@@ -2173,18 +2173,15 @@ export class Track {
         // Multi-branches : branche active = base du monde (toujours un candidat),
         // branches superposées = filtrées par distance
         const candidates = [];
-        const overlayMaxDistSq = 900; // 30 unités — seuil pour les branches superposées
         const activeBranchId = this.graph.activeBranchId;
 
         for (const [branchId, branch] of this.graph.branches) {
             const segIdx = this._findClosestSurfaceSegment(branch, branchId, x, z, callerId);
             if (segIdx < 0) continue;
 
-            // Branches superposées : filtre distance (pertinentes seulement à proximité)
+            // Branches superposées : test géométrique (le kart est-il SUR la surface ?)
             if (branchId !== activeBranchId) {
-                const seg = branch.segments[segIdx];
-                const distSq = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
-                if (distSq > overlayMaxDistSq) continue;
+                if (!this._isOnBranchSurface(branch, segIdx, x, z)) continue;
             }
 
             const y = this._interpolateElevation(branch, segIdx, x, z);
@@ -2245,13 +2242,13 @@ export class Track {
         let bestIdx = -1;
         let bestDist = Infinity;
 
-        // Zone pont dans ground : segments waypoint-only (pas une surface physique)
+        // Exclure les segments ground dans la zone pont (waypoint-only)
+        // Evite de matcher le mauvais chemin au croisement du figure-8
         const bz = this.bridgeZone;
-        const isGroundBranch = bz && branchId === 'infini_ground';
+        const isGroundBranch = bz && branchId === this.graph.activeBranchId;
 
         for (let j = 0; j < searchRange && j < n; j++) {
             const i = (start + j) % n;
-            // Exclure les segments ground dans la zone pont (waypoint-only)
             if (isGroundBranch && i >= bz.groundStartIdx && i <= bz.groundEndIdx) continue;
             const seg = branch.segments[i];
             const dist = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
@@ -2342,6 +2339,53 @@ export class Track {
         return yA * (1 - t) + yB * t + 0.2;
     }
 
+    // Test géométrique : le point (x, z) est-il SUR la surface d'une branche ?
+    // Projette le point sur le quad du segment et vérifie que la projection
+    // tombe entre les bords de la piste (inner/outer) et entre les segments (along)
+    _isOnBranchSurface(branch, segIdx, x, z) {
+        const n = branch.segments.length;
+
+        // Même sélection de quad que _interpolateElevation
+        const prevIdx = (segIdx - 1 + n) % n;
+        const nextIdx = (segIdx + 1) % n;
+        const prevDist = (branch.segments[prevIdx].x - x) ** 2 + (branch.segments[prevIdx].z - z) ** 2;
+        const nextDist = (branch.segments[nextIdx].x - x) ** 2 + (branch.segments[nextIdx].z - z) ** 2;
+
+        let segA, segB;
+        if (prevDist < nextDist) { segA = prevIdx; segB = segIdx; }
+        else { segA = segIdx; segB = nextIdx; }
+
+        const innerA = branch.innerPoints[segA];
+        const outerA = branch.outerPoints[segA];
+        const innerB = branch.innerPoints[segB];
+        const outerB = branch.outerPoints[segB];
+
+        // Direction le long de la piste
+        const alongX = (innerB.x + outerB.x) / 2 - (innerA.x + outerA.x) / 2;
+        const alongZ = (innerB.z + outerB.z) / 2 - (innerA.z + outerA.z) / 2;
+        const alongLenSq = alongX * alongX + alongZ * alongZ;
+        if (alongLenSq < 0.001) return false;
+
+        // Direction perpendiculaire (inner → outer)
+        const perpX = outerA.x - innerA.x;
+        const perpZ = outerA.z - innerA.z;
+        const perpLenSq = perpX * perpX + perpZ * perpZ;
+
+        // Projection du point sur le quad
+        const centerA_x = (innerA.x + outerA.x) / 2;
+        const centerA_z = (innerA.z + outerA.z) / 2;
+        const toX = x - centerA_x;
+        const toZ = z - centerA_z;
+
+        const t = (toX * alongX + toZ * alongZ) / alongLenSq;  // 0-1 le long de la piste
+        const s = (toX * perpX + toZ * perpZ) / perpLenSq;      // -0.5 à 0.5 d'un bord à l'autre
+
+        // Le point est sur la surface si t et s sont dans les bornes (avec marge)
+        // s : ±0.65 (0.15 de marge au-delà des bords pour les karts légèrement hors piste)
+        // t : -0.5 à 1.5 (marge pour le segment adjacent)
+        return s >= -0.65 && s <= 0.65 && t >= -0.5 && t <= 1.5;
+    }
+
     // Initialiser le système d'élévation 3D
     initRaycasting() {
         // Note: Le raycasting a été remplacé par une interpolation bilinéaire
@@ -2389,7 +2433,6 @@ export class Track {
         let bestSegIdx = -1;
         let bestY = -Infinity;
         let bestDistSq = Infinity;
-        const overlayMaxDistSq = 900; // 30 unités — seuil pour les branches superposées
         const activeBranchId = this.graph.activeBranchId;
 
         for (const [branchId, branch] of this.graph.branches) {
@@ -2397,10 +2440,13 @@ export class Track {
             if (segIdx < 0) continue;
 
             const seg = branch.segments[segIdx];
-            const distSq = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
 
-            // Branches superposées : filtre distance
-            if (branchId !== activeBranchId && distSq > overlayMaxDistSq) continue;
+            // Branches superposées : test géométrique (le kart est-il SUR la surface ?)
+            if (branchId !== activeBranchId) {
+                if (!this._isOnBranchSurface(branch, segIdx, x, z)) continue;
+            }
+
+            const distSq = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
 
             const segY = seg.y;
 
