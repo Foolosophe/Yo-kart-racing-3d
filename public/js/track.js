@@ -985,12 +985,10 @@ export class Track {
             }
         }
 
-        // Metadata bridgeZone : bornes resserrees d'1 segment de chaque cote
-        // pour que le ground mesh couvre les quads de transition (raccord sol/pont).
-        // Le bridge mesh chevauche legerement aux bords (bridge Y ≈ ground Y, invisible).
+        // Metadata bridgeZone : bornes exactes calculees depuis la generation
         this.bridgeZone = {
-            groundStartIdx: bridgeFirstIdx + 1,
-            groundEndIdx: bridgeLastIdx - 1,
+            groundStartIdx: bridgeFirstIdx,
+            groundEndIdx: bridgeLastIdx,
             bridgeSegments: bridgeBranch.segmentCount
         };
 
