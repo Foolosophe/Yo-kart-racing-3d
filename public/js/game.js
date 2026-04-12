@@ -624,6 +624,7 @@ export class Game {
         this.selectedTrack = document.getElementById('trackSelect')?.value || 'infini';
         console.log('Starting game with track:', this.selectedTrack, 'difficulty:', this.difficulty);
         this.track.generate(this.selectedTrack);
+        this.physics._wallGrid = null; // Invalider la grille de murs (sera reconstruite au prochain checkWallCollision)
         console.log('Track generated, meshes in scene:', this.scene.children.length);
 
         // Créer les boîtes d'items

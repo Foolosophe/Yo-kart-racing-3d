@@ -129,11 +129,12 @@ export class AI {
         let target = track.centerPoints[targetWaypoint];
 
         // Si le waypoint cible est à un Y très différent, chercher le prochain waypoint au bon niveau
-        if (target.y !== undefined && Math.abs(target.y - this.y) > 4) {
+        // Tolérance large (25) pour circuits avec pont (waypoint sol Y=5, kart pont Y=22)
+        if (target.y !== undefined && Math.abs(target.y - this.y) > 25) {
             for (let offset = 1; offset <= cfg.lookAhead; offset++) {
                 const testIdx = (this.currentWaypoint + offset) % n;
                 const testWp = track.centerPoints[testIdx];
-                if (testWp.y === undefined || Math.abs(testWp.y - this.y) <= 4) {
+                if (testWp.y === undefined || Math.abs(testWp.y - this.y) <= 25) {
                     targetWaypoint = testIdx;
                     target = testWp;
                     break;
@@ -176,7 +177,7 @@ export class AI {
         // Calculer si on est dans un virage (même logique Y)
         let lookAheadFar = (this.currentWaypoint + 10) % n;
         let farTarget = track.centerPoints[lookAheadFar];
-        if (farTarget.y !== undefined && Math.abs(farTarget.y - this.y) > 4) {
+        if (farTarget.y !== undefined && Math.abs(farTarget.y - this.y) > 25) {
             farTarget = target; // Fallback sur le target proche
         }
         const farDx = farTarget.x - this.x;
@@ -308,8 +309,9 @@ export class AI {
         const wp = track.centerPoints[this.currentWaypoint];
         const distXZ = Math.sqrt((this.x - wp.x) ** 2 + (this.z - wp.z) ** 2);
         const distY = wp.y !== undefined ? Math.abs(this.y - wp.y) : 0;
-        // Avancer seulement si proche en XZ ET au même niveau Y (tolérance 8 unités)
-        if (distXZ < cfg.waypointRadius && distY < 4) {
+        // Avancer seulement si proche en XZ ET au même niveau Y
+        // Tolérance large (25) pour circuits avec pont (waypoint au sol Y=5, kart sur pont Y=22)
+        if (distXZ < cfg.waypointRadius && distY < 25) {
             this.currentWaypoint = (this.currentWaypoint + 1) % track.centerPoints.length;
         }
 
@@ -319,7 +321,7 @@ export class AI {
 
         // Inclinaison selon la pente du terrain (désactivé sur mobile via _skipSlope)
         if (!this._skipSlope && track.is3DReliefEnabled && track.is3DReliefEnabled() && track.getSlopeAt) {
-            const slope = track.getSlopeAt(this.x, this.z, this.angle);
+            const slope = track.getSlopeAt(this.x, this.z, this.angle, 1, this.y);
             this.pitch += (slope.pitch - this.pitch) * 0.15;
             this.slopeRoll += (slope.roll - this.slopeRoll) * 0.15;
         }
@@ -358,9 +360,9 @@ export class AI {
         const tx = this.x - cp.x;
         const tz = this.z - cp.z;
 
-        // Vérifier le niveau Y (pour circuits avec croisements comme le figure-8)
+        // Vérifier le niveau Y (tolérance large pour circuits avec pont comme le figure-8)
         const yDiff = cp.y !== undefined ? Math.abs(this.y - cp.y) : 0;
-        if (yDiff > 4) return; // Pas au bon niveau (sol vs pont)
+        if (yDiff > 25) return; // Pas au bon niveau
 
         // Détection simple : dans la zone du checkpoint
         const perpDist = Math.abs(tx * cp.nz - tz * cp.nx);

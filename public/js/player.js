@@ -300,7 +300,7 @@ export class Player {
 
         // Inclinaison selon la pente du terrain (désactivé sur mobile : 4x boucles O(n) par frame)
         if (!this._skipSlope && track.is3DReliefEnabled && track.is3DReliefEnabled() && track.getSlopeAt) {
-            const slope = track.getSlopeAt(this.x, this.z, this.angle);
+            const slope = track.getSlopeAt(this.x, this.z, this.angle, 0, this.y);
             // Transition douce vers l'inclinaison cible
             this.pitch += (slope.pitch - this.pitch) * 0.15;
             this.slopeRoll += (slope.roll - this.slopeRoll) * 0.15;
@@ -342,9 +342,9 @@ export class Player {
         const tx = this.x - cp.x;
         const tz = this.z - cp.z;
 
-        // Vérifier le niveau Y (pour circuits avec croisements comme le figure-8)
+        // Vérifier le niveau Y (tolérance large pour circuits avec pont comme le figure-8)
         const yDiff = cp.y !== undefined ? Math.abs(this.y - cp.y) : 0;
-        if (yDiff > 4) return; // Pas au bon niveau (sol vs pont)
+        if (yDiff > 25) return; // Pas au bon niveau
 
         // Détection simple : dans la zone du checkpoint
         const perpDist = Math.abs(tx * cp.nz - tz * cp.nx);

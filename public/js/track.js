@@ -651,6 +651,7 @@ export class Track {
         this.boostZones = [];
         this.rampZones = [];
         this.elevatedSegments = [];
+        this.bridgeZone = null;
 
         // Reset du raycasting
         this.trackSurfaceMeshes = [];
@@ -915,12 +916,33 @@ export class Track {
         // Angle pour que le joueur avance dans la direction de la tangente
         this.startAngle = Math.atan2(startTan.x, startTan.z);
 
-        // Créer la branche
-        const mainBranch = new TrackBranch('infini_main', {
-            name: 'Circuit Infini',
+        // === BRANCHE 1 : GROUND (500 segments, boucle complète, relief seulement) ===
+        const groundBranch = new TrackBranch('infini_ground', {
+            name: 'Circuit Infini - Sol',
             layer: 0,
             baseElevation: 0
         });
+
+        // === BRANCHE 2 : BRIDGE (zone pont uniquement, rampe + plateau) ===
+        const bridgeBranch = new TrackBranch('infini_bridge', {
+            name: 'Circuit Infini - Pont',
+            layer: 1,
+            baseElevation: 0
+        });
+
+        // Identifier la zone pont en indices de segments
+        // tNorm = 0.38 → i = (0.38 - 0.75 + 1.0) * 500 = 315
+        // tNorm = 0.62 → i = (0.62 - 0.75 + 1.0) * 500 = 435
+        const bridgeStartIdx = 315;
+        const bridgeEndIdx = 435;
+
+        // Metadata pour les systèmes (élévation, mesh, murs) :
+        // Les segments ground[315-435] sont "waypoint-only" (pas une surface physique)
+        this.bridgeZone = {
+            groundStartIdx: bridgeStartIdx,
+            groundEndIdx: bridgeEndIdx,
+            bridgeSegments: bridgeEndIdx - bridgeStartIdx
+        };
 
         // Générer les segments EN COMMENÇANT par la position de départ
         // Ainsi segment 0 = départ, et les checkpoints à 25%, 50%, 75% sont dans l'ordre
@@ -929,23 +951,6 @@ export class Track {
             const tNorm = (startTNorm + i / totalSegments) % 1.0;
             const pt = getPoint(tNorm);
             const tan = getTangent(tNorm);
-
-            // Élévation = relief 3D (comme Oval) + pont
-            const reliefY = this.getElevationForSegment(i, totalSegments);
-            const bridgeY = getBridgeElevation(tNorm);
-
-            // Sur le pont : élévation FIXE à 12m AU-DESSUS du relief max (~10m)
-            // Pour garantir le passage en dessous
-            let elevation;
-            if (bridgeY > 0) {
-                // Zone du pont : hauteur fixe = relief_max (10) + bridgeHeight (12) = 22m
-                // Avec rampe progressive
-                const bridgeBaseHeight = 10 + bridgeHeight;  // 22m au sommet
-                const rampFactor = bridgeY / bridgeHeight;   // 0 à 1
-                elevation = reliefY * (1 - rampFactor) + bridgeBaseHeight * rampFactor;
-            } else {
-                elevation = reliefY;
-            }
 
             // Perpendiculaire : rotation 90° de la tangente
             const rightX = -tan.z;
@@ -957,24 +962,48 @@ export class Track {
             const rightPtX = pt.x + rightX * halfWidth;
             const rightPtZ = pt.z + rightZ * halfWidth;
 
-            mainBranch.addSegment(
+            // Relief 3D (comme Oval) — utilisé pour les deux branches
+            const reliefY = this.getElevationForSegment(i, totalSegments);
+
+            // GROUND : toujours l'élévation du relief (jamais le pont)
+            groundBranch.addSegment(
                 { x: pt.x, z: pt.z },
                 { x: leftX, z: leftZ },
                 { x: rightPtX, z: rightPtZ },
-                elevation
+                reliefY
             );
+
+            // BRIDGE : seulement dans la zone pont
+            const bridgeY = getBridgeElevation(tNorm);
+            if (bridgeY > 0) {
+                // Élévation pont : hauteur fixe = relief_max (10) + bridgeHeight (12) = 22m
+                // Avec rampe progressive (smoothstep)
+                const bridgeBaseHeight = 10 + bridgeHeight;  // 22m au sommet
+                const rampFactor = bridgeY / bridgeHeight;   // 0 à 1
+                const bridgeElevation = reliefY * (1 - rampFactor) + bridgeBaseHeight * rampFactor;
+
+                bridgeBranch.addSegment(
+                    { x: pt.x, z: pt.z },
+                    { x: leftX, z: leftZ },
+                    { x: rightPtX, z: rightPtZ },
+                    bridgeElevation
+                );
+            }
         }
 
-        // Générer les waypoints
-        mainBranch.generateWaypoints(5);
+        // Générer les waypoints (ground = boucle complète pour navigation IA)
+        groundBranch.generateWaypoints(5);
 
-        // Ajouter la branche au graphe
-        this.graph.addBranch(mainBranch);
+        // Ajouter les branches au graphe (ground = active pour compatibilité centerPoints)
+        this.graph.addBranch(groundBranch);
+        this.graph.addBranch(bridgeBranch);
 
-        console.log(`[Infini] Figure-8 créé : ${mainBranch.segmentCount} segments`);
+        console.log(`[Infini] Figure-8 créé : ground=${groundBranch.segmentCount} segments, bridge=${bridgeBranch.segmentCount} segments`);
+        console.log(`[Infini] Bridge zone: ground[${bridgeStartIdx}-${bridgeEndIdx}] = waypoint-only`);
         console.log(`[Infini] Dimensions: X=${(baseRadius * s1 * 2).toFixed(0)}, Z=${(scaleZ * 2).toFixed(0)}`);
         console.log(`[Infini] Départ: (${this.startX.toFixed(1)}, ${this.startZ.toFixed(1)})`);
-        console.log(`[Infini] Elevation range: min=${Math.min(...mainBranch.segments.map(s => s.y)).toFixed(2)}, max=${Math.max(...mainBranch.segments.map(s => s.y)).toFixed(2)}`);
+        console.log(`[Infini] Ground elevation: min=${Math.min(...groundBranch.segments.map(s => s.y)).toFixed(2)}, max=${Math.max(...groundBranch.segments.map(s => s.y)).toFixed(2)}`);
+        console.log(`[Infini] Bridge elevation: min=${Math.min(...bridgeBranch.segments.map(s => s.y)).toFixed(2)}, max=${Math.max(...bridgeBranch.segments.map(s => s.y)).toFixed(2)}`);
     }
 
     // ============================================================
@@ -1173,8 +1202,14 @@ export class Track {
             ? (CONFIG.elevation.baseHeight + CONFIG.elevation.mainHillAmplitude + CONFIG.elevation.bumpAmplitude)
             : 1;
 
+        // Zone pont à skipper dans le mesh ground (waypoint-only, pas de surface)
+        const bz = this.bridgeZone;
+
         for (let i = 0; i < n; i++) {
             const next = (i + 1) % n;
+
+            // Skipper les segments ground dans la zone pont (pas une surface physique)
+            if (bz && i >= bz.groundStartIdx && i <= bz.groundEndIdx) continue;
 
             if (!this.innerPoints[i] || !this.outerPoints[i] ||
                 !this.innerPoints[next] || !this.outerPoints[next]) {
@@ -1252,7 +1287,7 @@ export class Track {
             validSegments++;
         }
 
-        // Créer un seul mesh avec toute la piste
+        // Créer un seul mesh avec toute la piste (ground)
         const trackGeo = new THREE.BufferGeometry();
         // Trim les buffers au nombre réel de segments valides
         trackGeo.setAttribute('position', new THREE.BufferAttribute(allVertices.slice(0, validSegments * 18), 3));
@@ -1268,7 +1303,77 @@ export class Track {
         this.scene.add(trackMesh);
         this.trackMeshes.push(trackMesh);
 
-        console.log('Track surface: 1 merged mesh (' + validSegments + ' segments, ' + (validSegments * 2) + ' triangles) — was ' + n + ' individual meshes');
+        console.log('Ground surface: 1 merged mesh (' + validSegments + ' segments, ' + (validSegments * 2) + ' triangles)');
+
+        // === MESH BRIDGE : branche séparée pour le pont ===
+        const bridgeBranch = this.graph.getBranch('infini_bridge');
+        if (bridgeBranch && bridgeBranch.segments.length > 0) {
+            const bn = bridgeBranch.segments.length;
+            const bridgeVertices = new Float32Array(bn * 6 * 3);
+            const bridgeColors = new Float32Array(bn * 6 * 3);
+            let bridgeValid = 0;
+
+            for (let i = 0; i < bn; i++) {
+                const next = (i + 1) % bn;
+                if (next === 0 && bn > 2) continue; // Pas de wrap (pont = section ouverte)
+
+                const seg1 = bridgeBranch.segments[i];
+                const seg2 = bridgeBranch.segments[next];
+                const inner1 = bridgeBranch.innerPoints[i];
+                const inner2 = bridgeBranch.innerPoints[next];
+                const outer1 = bridgeBranch.outerPoints[i];
+                const outer2 = bridgeBranch.outerPoints[next];
+
+                const y1 = seg1.y + 0.1;
+                const y2 = seg2.y + 0.1;
+                if (isNaN(y1) || isNaN(y2)) continue;
+
+                const off = bridgeValid * 18;
+
+                // Triangle 1
+                bridgeVertices[off]     = inner1.x; bridgeVertices[off + 1] = inner1.y + 0.1; bridgeVertices[off + 2] = inner1.z;
+                bridgeVertices[off + 3] = outer1.x; bridgeVertices[off + 4] = outer1.y + 0.1; bridgeVertices[off + 5] = outer1.z;
+                bridgeVertices[off + 6] = inner2.x; bridgeVertices[off + 7] = inner2.y + 0.1; bridgeVertices[off + 8] = inner2.z;
+
+                // Triangle 2
+                bridgeVertices[off + 9]  = outer1.x; bridgeVertices[off + 10] = outer1.y + 0.1; bridgeVertices[off + 11] = outer1.z;
+                bridgeVertices[off + 12] = outer2.x; bridgeVertices[off + 13] = outer2.y + 0.1; bridgeVertices[off + 14] = outer2.z;
+                bridgeVertices[off + 15] = inner2.x; bridgeVertices[off + 16] = inner2.y + 0.1; bridgeVertices[off + 17] = inner2.z;
+
+                // Couleur pont (gris-bleu distinctif)
+                const avgY = (y1 + y2) / 2;
+                const heightRatio = Math.min(avgY / 25, 1);
+                const r = (0x55 + Math.floor(heightRatio * 0x20)) / 255;
+                const g = (0x55 + Math.floor(heightRatio * 0x20)) / 255;
+                const b = (0x77 + Math.floor(heightRatio * 0x20)) / 255;
+                for (let v = 0; v < 6; v++) {
+                    bridgeColors[off + v * 3]     = r;
+                    bridgeColors[off + v * 3 + 1] = g;
+                    bridgeColors[off + v * 3 + 2] = b;
+                }
+
+                bridgeValid++;
+            }
+
+            const bridgeGeo = new THREE.BufferGeometry();
+            bridgeGeo.setAttribute('position', new THREE.BufferAttribute(bridgeVertices.slice(0, bridgeValid * 18), 3));
+            bridgeGeo.setAttribute('color', new THREE.BufferAttribute(bridgeColors.slice(0, bridgeValid * 18), 3));
+            bridgeGeo.computeVertexNormals();
+
+            const bridgeMat = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                roughness: 0.7,
+                side: THREE.DoubleSide
+            });
+            const bridgeMesh = new THREE.Mesh(bridgeGeo, bridgeMat);
+            this.scene.add(bridgeMesh);
+            this.trackMeshes.push(bridgeMesh);
+
+            console.log('Bridge surface: 1 merged mesh (' + bridgeValid + ' segments)');
+
+            // === PILIERS DU PONT ===
+            this._createBridgePillarsFromBranch(bridgeBranch);
+        }
 
         // Sol (herbe)
         const groundSize = this.trackType === 'infini' ? 1200 : 500;
@@ -1279,6 +1384,22 @@ export class Track {
         ground.position.y = -0.5;
         this.scene.add(ground);
         this.trackMeshes.push(ground);
+    }
+
+    // Créer les piliers du pont à partir de la branche bridge
+    _createBridgePillarsFromBranch(bridgeBranch) {
+        const n = bridgeBranch.segments.length;
+        for (let i = 0; i < n; i += 10) {
+            const seg = bridgeBranch.segments[i];
+            if (seg.y > 5) { // Seulement si suffisamment haut
+                const pillarGeo = new THREE.CylinderGeometry(1.5, 2, seg.y, 8);
+                const pillarMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 });
+                const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+                pillar.position.set(seg.x, seg.y / 2, seg.z);
+                this.scene.add(pillar);
+                this.trackMeshes.push(pillar);
+            }
+        }
     }
 
     // Créer les piliers de soutien pour les ponts
@@ -1325,6 +1446,9 @@ export class Track {
         const halfW = wallThickness / 2;
         const maxY3D = use3DRelief ? (CONFIG.elevation.baseHeight + CONFIG.elevation.mainHillAmplitude) : 1;
 
+        // Zone pont à skipper dans les murs ground
+        const bz = this.bridgeZone;
+
         const createMergedWalls = (points, branchPoints, isInner) => {
             // Chaque mur = un quad (4 vertices formant 2 triangles) × 4 faces visibles
             // Simplifié : on utilise des quads avant/arrière (face la plus visible)
@@ -1333,6 +1457,9 @@ export class Track {
             const wallColors = [];
 
             for (let i = 0; i < n; i++) {
+                // Skipper les segments ground dans la zone pont (pas de murs fantômes)
+                if (bz && i >= bz.groundStartIdx && i <= bz.groundEndIdx) continue;
+
                 const next = (i + 1) % n;
                 const p1 = points[i];
                 const p2 = points[next];
@@ -1450,6 +1577,109 @@ export class Track {
 
         createMergedWalls(this.innerPoints, branchInner, true);
         createMergedWalls(this.outerPoints, branchOuter, false);
+
+        // === MURS BRIDGE : séparés, avec l'élévation du pont ===
+        const bridgeBranch = this.graph.getBranch('infini_bridge');
+        if (bridgeBranch && bridgeBranch.segments.length > 1) {
+            this._createBridgeWalls(bridgeBranch, wallHeight, halfW, maxY3D, use3DRelief);
+        }
+    }
+
+    // Créer les murs du pont (branche bridge séparée)
+    _createBridgeWalls(bridgeBranch, wallHeight, halfW, maxY3D, use3DRelief) {
+        const bn = bridgeBranch.segments.length;
+
+        const createBridgeSideWalls = (points, isInner) => {
+            const wallVertices = [];
+            const wallColors = [];
+
+            for (let i = 0; i < bn - 1; i++) {
+                const next = i + 1;
+                const p1 = points[i];
+                const p2 = points[next];
+                if (!p1 || !p2) continue;
+
+                const avgElevation = (p1.y + p2.y) / 2;
+
+                // Segment de collision pour le pont
+                this.wallSegments.push({
+                    x1: p1.x, z1: p1.z,
+                    x2: p2.x, z2: p2.z,
+                    elevation: avgElevation,
+                    layer: 1
+                });
+
+                const dx = p2.x - p1.x;
+                const dz = p2.z - p1.z;
+                const len = Math.sqrt(dx * dx + dz * dz);
+                if (len < 0.1) continue;
+
+                const nx = -dz / len * halfW;
+                const nz = dx / len * halfW;
+                const y1Bot = avgElevation;
+                const y1Top = avgElevation + wallHeight;
+
+                // Face extérieure
+                wallVertices.push(
+                    p1.x + nx, y1Bot, p1.z + nz,
+                    p2.x + nx, y1Bot, p2.z + nz,
+                    p1.x + nx, y1Top, p1.z + nz,
+                    p2.x + nx, y1Bot, p2.z + nz,
+                    p2.x + nx, y1Top, p2.z + nz,
+                    p1.x + nx, y1Top, p1.z + nz
+                );
+                // Face intérieure
+                wallVertices.push(
+                    p1.x - nx, y1Bot, p1.z - nz,
+                    p1.x - nx, y1Top, p1.z - nz,
+                    p2.x - nx, y1Bot, p2.z - nz,
+                    p2.x - nx, y1Bot, p2.z - nz,
+                    p1.x - nx, y1Top, p1.z - nz,
+                    p2.x - nx, y1Top, p2.z - nz
+                );
+                // Face du dessus
+                wallVertices.push(
+                    p1.x - nx, y1Top, p1.z - nz,
+                    p1.x + nx, y1Top, p1.z + nz,
+                    p2.x - nx, y1Top, p2.z - nz,
+                    p2.x - nx, y1Top, p2.z - nz,
+                    p1.x + nx, y1Top, p1.z + nz,
+                    p2.x + nx, y1Top, p2.z + nz
+                );
+
+                // Couleur pont (gris-violet)
+                const heightRatio = use3DRelief ? Math.min(avgElevation / maxY3D, 1) : 0.5;
+                let r, g, b;
+                if (isInner) {
+                    r = (0x99 + Math.floor(heightRatio * 0x33)) / 255;
+                    g = 0x44 / 255;
+                    b = (0x99 + Math.floor(heightRatio * 0x22)) / 255;
+                } else {
+                    const gray = (0xaa + Math.floor(heightRatio * 0x22)) / 255;
+                    r = gray; g = gray; b = (0xbb + Math.floor(heightRatio * 0x22)) / 255;
+                }
+                for (let v = 0; v < 18; v++) {
+                    wallColors.push(r, g, b);
+                }
+            }
+
+            if (wallVertices.length === 0) return;
+
+            const wallGeo = new THREE.BufferGeometry();
+            wallGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(wallVertices), 3));
+            wallGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(wallColors), 3));
+            wallGeo.computeVertexNormals();
+
+            const wallMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 });
+            const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+            this.scene.add(wallMesh);
+            this.trackMeshes.push(wallMesh);
+
+            console.log('Bridge ' + (isInner ? 'inner' : 'outer') + ' walls: 1 merged mesh');
+        };
+
+        createBridgeSideWalls(bridgeBranch.innerPoints, true);
+        createBridgeSideWalls(bridgeBranch.outerPoints, false);
     }
     
     createCheckpoints() {
@@ -1922,67 +2152,128 @@ export class Track {
     // NOUVEAU SYSTÈME D'ÉLÉVATION 3D (basé sur les branches)
     // ============================================================
 
-    // Obtenir l'élévation 3D à une position (x, z)
-    // Utilise une interpolation bilinéaire sur les quads de la piste
+    // Obtenir l'élévation 3D à une position (x, z) — approche "closest floor below"
+    // Cherche dans TOUTES les branches, prend le sol le plus haut SOUS le kart
     get3DElevationAt(x, z, currentY = null, callerId = 0) {
-        const branch = this.graph.getActiveBranch();
-        if (!branch || branch.segments.length === 0) {
+        const activeBranch = this.graph.getActiveBranch();
+        if (!activeBranch || activeBranch.segments.length === 0) {
             return this.getElevationAt(x, z);
         }
 
-        const n = branch.segments.length;
-        const maxYDiff = 5; // Assez large pour le relief (0-10m) mais sépare sol/pont (22m)
+        // S'il n'y a qu'une seule branche (Oval, Volcan), chemin rapide mono-branche
+        if (this.graph.branches.size === 1) {
+            const segIdx = this._findClosestSurfaceSegment(activeBranch, 'single', x, z, callerId);
+            return this._interpolateElevation(activeBranch, segIdx, x, z);
+        }
 
-        // Recherche LOCALE autour du dernier index connu — cache par racer
+        // Multi-branches : chercher dans chaque branche le segment surface le plus proche
+        const candidates = [];
+        const maxDistSq = 900; // 30 unités max en XZ
+
+        for (const [branchId, branch] of this.graph.branches) {
+            const segIdx = this._findClosestSurfaceSegment(branch, branchId, x, z, callerId);
+            if (segIdx < 0) continue;
+
+            const seg = branch.segments[segIdx];
+            const distSq = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
+            if (distSq > maxDistSq) continue;
+
+            const y = this._interpolateElevation(branch, segIdx, x, z);
+            candidates.push(y);
+        }
+
+        // Aucun candidat : fallback legacy
+        if (candidates.length === 0) {
+            return this.getElevationAt(x, z);
+        }
+
+        // Un seul candidat : retourner directement
+        if (candidates.length === 1) {
+            return candidates[0];
+        }
+
+        // Plusieurs candidats (croisement pont/sol) : "closest floor below"
+        if (currentY !== null) {
+            // Prendre le Y le plus haut qui est SOUS le kart (avec marge de +2)
+            let bestY = -Infinity;
+            for (let i = 0; i < candidates.length; i++) {
+                if (candidates[i] <= currentY + 2 && candidates[i] > bestY) {
+                    bestY = candidates[i];
+                }
+            }
+            // Si trouvé, retourner
+            if (bestY > -Infinity) return bestY;
+
+            // Sinon (kart en dessous de tout) : prendre le plus bas
+            bestY = Infinity;
+            for (let i = 0; i < candidates.length; i++) {
+                if (candidates[i] < bestY) bestY = candidates[i];
+            }
+            return bestY;
+        }
+
+        // Pas de currentY (items init, etc.) : prendre le plus bas (sol)
+        let minY = Infinity;
+        for (let i = 0; i < candidates.length; i++) {
+            if (candidates[i] < minY) minY = candidates[i];
+        }
+        return minY;
+    }
+
+    // Trouver le segment surface le plus proche en XZ dans une branche
+    // Exclut les segments "waypoint-only" (zone pont dans ground)
+    _findClosestSurfaceSegment(branch, branchId, x, z, callerId) {
+        const n = branch.segments.length;
+        if (n === 0) return -1;
+
+        // Cache par callerId + branchId
         if (!this._elevCache) this._elevCache = {};
-        if (!this._elevCache[callerId]) this._elevCache[callerId] = 0;
-        const start = this._elevCache[callerId];
-        const searchRange = 60;
-        let bestIdx = start;
+        const cacheKey = `${callerId}_${branchId}`;
+        if (this._elevCache[cacheKey] === undefined) this._elevCache[cacheKey] = 0;
+
+        const start = this._elevCache[cacheKey];
+        const searchRange = 80;
+        let bestIdx = -1;
         let bestDist = Infinity;
+
+        // Zone pont dans ground : segments waypoint-only (pas une surface physique)
+        const bz = this.bridgeZone;
+        const isGroundBranch = bz && branchId === 'infini_ground';
 
         for (let j = 0; j < searchRange && j < n; j++) {
             const i = (start + j) % n;
+            // Exclure les segments ground dans la zone pont (waypoint-only)
+            if (isGroundBranch && i >= bz.groundStartIdx && i <= bz.groundEndIdx) continue;
             const seg = branch.segments[i];
-            if (currentY !== null && Math.abs(seg.y - currentY) > maxYDiff) continue;
             const dist = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
             if (dist < bestDist) { bestDist = dist; bestIdx = i; }
 
             const ib = (start - j + n) % n;
+            if (isGroundBranch && ib >= bz.groundStartIdx && ib <= bz.groundEndIdx) continue;
             const segB = branch.segments[ib];
-            if (currentY !== null && Math.abs(segB.y - currentY) > maxYDiff) continue;
             const distB = (segB.x - x) * (segB.x - x) + (segB.z - z) * (segB.z - z);
             if (distB < bestDist) { bestDist = distB; bestIdx = ib; }
         }
 
-        // Fallback : recherche COMPLETE si la locale n'a rien trouvé de proche
-        // Seuil bas (400 = 20 unités) pour détecter vite les sauts au croisement figure-8
+        // Fallback complet si trop loin (seuil 400 = 20 unités)
         if (bestDist > 400) {
-            let fallbackIdx = bestIdx;
-            let fallbackDist = bestDist;
-            // Passe 1 : avec filtre Y
             for (let i = 0; i < n; i++) {
+                if (isGroundBranch && i >= bz.groundStartIdx && i <= bz.groundEndIdx) continue;
                 const seg = branch.segments[i];
-                if (currentY !== null && Math.abs(seg.y - currentY) > maxYDiff) continue;
                 const dist = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
-                if (dist < fallbackDist) { fallbackDist = dist; fallbackIdx = i; }
+                if (dist < bestDist) { bestDist = dist; bestIdx = i; }
             }
-            // Passe 2 : sans filtre Y si toujours rien de proche
-            if (fallbackDist > 400) {
-                for (let i = 0; i < n; i++) {
-                    const seg = branch.segments[i];
-                    const dist = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
-                    if (dist < fallbackDist) { fallbackDist = dist; fallbackIdx = i; }
-                }
-            }
-            bestIdx = fallbackIdx;
-            bestDist = fallbackDist;
         }
 
-        this._elevCache[callerId] = bestIdx;
+        if (bestIdx >= 0) this._elevCache[cacheKey] = bestIdx;
+        return bestIdx;
+    }
 
-        // ÉTAPE 2: Déterminer le segment courant et suivant pour l'interpolation
-        // Vérifier si le point est plus proche du segment précédent ou suivant
+    // Interpolation bilinéaire de l'élévation sur le quad autour d'un segment
+    _interpolateElevation(branch, bestIdx, x, z) {
+        const n = branch.segments.length;
+
+        // Déterminer le quad : bestIdx + voisin le plus proche
         const prevIdx = (bestIdx - 1 + n) % n;
         const nextIdx = (bestIdx + 1) % n;
 
@@ -1991,7 +2282,6 @@ export class Track {
         const prevDist = (prevSeg.x - x) ** 2 + (prevSeg.z - z) ** 2;
         const nextDist = (nextSeg.x - x) ** 2 + (nextSeg.z - z) ** 2;
 
-        // Choisir le quad entre bestIdx et son voisin le plus proche
         let segA, segB;
         if (prevDist < nextDist) {
             segA = prevIdx;
@@ -2001,21 +2291,19 @@ export class Track {
             segB = nextIdx;
         }
 
-        // ÉTAPE 3: Récupérer les 4 coins du quad (segment A vers segment B)
+        // Récupérer les 4 coins du quad
         const innerA = branch.innerPoints[segA];
         const outerA = branch.outerPoints[segA];
         const innerB = branch.innerPoints[segB];
         const outerB = branch.outerPoints[segB];
 
-        // ÉTAPE 4: Calculer la position relative dans le quad
         // Direction le long de la piste (de A vers B)
         const alongX = (innerB.x + outerB.x) / 2 - (innerA.x + outerA.x) / 2;
         const alongZ = (innerB.z + outerB.z) / 2 - (innerA.z + outerA.z) / 2;
         const alongLen = Math.sqrt(alongX * alongX + alongZ * alongZ);
 
         if (alongLen < 0.001) {
-            // Segment dégénéré, retourner l'élévation du centre
-            return branch.segments[bestIdx].y;
+            return branch.segments[bestIdx].y + 0.2;
         }
 
         // Direction perpendiculaire (inner vers outer)
@@ -2029,30 +2317,20 @@ export class Track {
         const toPointX = x - centerA_x;
         const toPointZ = z - centerA_z;
 
-        // Projection sur l'axe "along" (t = 0 à 1 le long du segment)
+        // Projection sur l'axe "along" (t = 0 à 1)
         let t = (toPointX * alongX + toPointZ * alongZ) / (alongLen * alongLen);
-        t = Math.max(0, Math.min(1, t)); // Clamp entre 0 et 1
+        t = Math.max(0, Math.min(1, t));
 
-        // Projection sur l'axe "perp" (s = -0.5 à 0.5, -0.5 = inner, 0.5 = outer)
+        // Projection sur l'axe "perp" (s = 0 à 1, 0 = inner, 1 = outer)
         let s = (toPointX * perpX + toPointZ * perpZ) / (perpLen * perpLen);
-        s = Math.max(-0.5, Math.min(0.5, s)); // Clamp
-        s += 0.5; // Convertir en 0 à 1 (0 = inner, 1 = outer)
+        s = Math.max(-0.5, Math.min(0.5, s));
+        s += 0.5;
 
-        // ÉTAPE 5: Interpolation bilinéaire de l'élévation
-        // Élévations aux 4 coins
-        const yInnerA = innerA.y;
-        const yOuterA = outerA.y;
-        const yInnerB = innerB.y;
-        const yOuterB = outerB.y;
+        // Interpolation bilinéaire
+        const yA = innerA.y * (1 - s) + outerA.y * s;
+        const yB = innerB.y * (1 - s) + outerB.y * s;
 
-        // Interpolation: d'abord le long de la piste, puis latéralement
-        const yA = yInnerA * (1 - s) + yOuterA * s;  // Élévation interpolée au segment A
-        const yB = yInnerB * (1 - s) + yOuterB * s;  // Élévation interpolée au segment B
-        const y = yA * (1 - t) + yB * t;             // Élévation finale
-
-        // Ajouter un offset pour que le kart soit SUR la surface (pas dedans)
-        // La surface visuelle est à Y + 0.1, donc on ajoute 0.2 pour être légèrement au-dessus
-        return y + 0.2;
+        return yA * (1 - t) + yB * t + 0.2;
     }
 
     // Initialiser le système d'élévation 3D
@@ -2078,67 +2356,78 @@ export class Track {
     }
 
     // Trouver le point le plus proche sur la piste (pour anti-tunneling)
+    // Multi-branches : cherche dans toutes les branches (hors waypoint-only),
+    // prend la surface la plus proche sous le kart
     getClosestTrackPoint(x, z, playerY = null, callerId = 0) {
-        const branch = this.graph.getActiveBranch();
-        if (!branch || branch.segments.length === 0) {
+        const activeBranch = this.graph.getActiveBranch();
+        if (!activeBranch || activeBranch.segments.length === 0) {
             return null;
         }
 
-        // Recherche LOCALE autour du dernier index — cache par racer
-        if (!this._trackPtCache) this._trackPtCache = {};
-        if (!this._trackPtCache[callerId]) this._trackPtCache[callerId] = 0;
-        const n = branch.segments.length;
-        const start = this._trackPtCache[callerId];
-        const searchRange = 60;
-        let closestIdx = start;
-        let closestDist = Infinity;
-        const maxYDiff = 5;
-
-        for (let j = 0; j < searchRange && j < n; j++) {
-            const i = (start + j) % n;
-            const seg = branch.segments[i];
-            if (playerY !== null && Math.abs(seg.y - playerY) > maxYDiff) continue;
-            const dist = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
-            if (dist < closestDist) { closestDist = dist; closestIdx = i; }
-
-            const ib = (start - j + n) % n;
-            const segB = branch.segments[ib];
-            if (playerY !== null && Math.abs(segB.y - playerY) > maxYDiff) continue;
-            const distB = (segB.x - x) * (segB.x - x) + (segB.z - z) * (segB.z - z);
-            if (distB < closestDist) { closestDist = distB; closestIdx = ib; }
-        }
-
-        // Fallback complet si trop loin (seuil bas pour figure-8)
-        if (closestDist > 400) {
-            let fallbackIdx = closestIdx;
-            let fallbackDist = closestDist;
-            for (let i = 0; i < n; i++) {
-                const seg = branch.segments[i];
-                if (playerY !== null && Math.abs(seg.y - playerY) > maxYDiff) continue;
-                const dist = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
-                if (dist < fallbackDist) { fallbackDist = dist; fallbackIdx = i; }
-            }
-            if (fallbackDist > 400) {
-                for (let i = 0; i < n; i++) {
-                    const seg = branch.segments[i];
-                    const dist = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
-                    if (dist < fallbackDist) { fallbackDist = dist; fallbackIdx = i; }
-                }
-            }
-            closestDist = fallbackDist;
-            closestIdx = fallbackIdx;
-        }
-
-        this._trackPtCache[callerId] = closestIdx;
-
         // Réutiliser l'objet résultat (évite GC)
         if (!this._trackPtResult) this._trackPtResult = { x: 0, z: 0, y: 0, dist: 0, angle: 0 };
-        const center = branch.segments[closestIdx];
-        const nextCenter = branch.segments[(closestIdx + 1) % n];
+
+        // Mono-branche (Oval, Volcan) : chemin rapide
+        if (this.graph.branches.size === 1) {
+            const segIdx = this._findClosestSurfaceSegment(activeBranch, 'single', x, z, callerId);
+            if (segIdx < 0) return null;
+            return this._buildTrackPointResult(activeBranch, segIdx, x, z);
+        }
+
+        // Multi-branches : chercher le meilleur candidat "closest floor below"
+        let bestBranch = null;
+        let bestSegIdx = -1;
+        let bestY = -Infinity;
+        let bestDistSq = Infinity;
+        const maxDistSq = 900; // 30 unités
+
+        for (const [branchId, branch] of this.graph.branches) {
+            const segIdx = this._findClosestSurfaceSegment(branch, branchId, x, z, callerId);
+            if (segIdx < 0) continue;
+
+            const seg = branch.segments[segIdx];
+            const distSq = (seg.x - x) * (seg.x - x) + (seg.z - z) * (seg.z - z);
+            if (distSq > maxDistSq) continue;
+
+            const segY = seg.y;
+
+            if (playerY !== null) {
+                // Closest floor below : Y le plus haut sous le kart
+                if (segY <= playerY + 2 && segY > bestY) {
+                    bestY = segY;
+                    bestBranch = branch;
+                    bestSegIdx = segIdx;
+                    bestDistSq = distSq;
+                }
+            } else {
+                // Pas de playerY : prendre le plus proche en XZ
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    bestBranch = branch;
+                    bestSegIdx = segIdx;
+                }
+            }
+        }
+
+        if (!bestBranch || bestSegIdx < 0) {
+            // Fallback sur la branche active
+            const segIdx = this._findClosestSurfaceSegment(activeBranch, 'fallback', x, z, callerId);
+            if (segIdx < 0) return null;
+            return this._buildTrackPointResult(activeBranch, segIdx, x, z);
+        }
+
+        return this._buildTrackPointResult(bestBranch, bestSegIdx, x, z);
+    }
+
+    // Construire le résultat getClosestTrackPoint à partir d'une branche + index
+    _buildTrackPointResult(branch, segIdx, x, z) {
+        const n = branch.segments.length;
+        const center = branch.segments[segIdx];
+        const nextCenter = branch.segments[(segIdx + 1) % n];
         this._trackPtResult.x = center.x;
         this._trackPtResult.z = center.z;
         this._trackPtResult.y = center.y;
-        this._trackPtResult.dist = Math.sqrt(closestDist);
+        this._trackPtResult.dist = Math.sqrt((center.x - x) ** 2 + (center.z - z) ** 2);
         this._trackPtResult.angle = Math.atan2(nextCenter.x - center.x, nextCenter.z - center.z);
         return this._trackPtResult;
     }
@@ -2151,7 +2440,8 @@ export class Track {
 
     // Calculer la pente du terrain à une position (x, z) dans une direction (angle)
     // Retourne { pitch, roll } en radians
-    getSlopeAt(x, z, angle) {
+    // callerId et currentY évitent la pollution du cache entre joueur et IA
+    getSlopeAt(x, z, angle, callerId = 0, currentY = null) {
         // Réutiliser l'objet résultat (évite GC)
         if (!this._slopeResult) this._slopeResult = { pitch: 0, roll: 0 };
 
@@ -2165,11 +2455,11 @@ export class Track {
         const sampleDist = 3;
         const sinA = Math.sin(angle), cosA = Math.cos(angle);
 
-        // Élévations aux 4 points (get3DElevationAt utilise maintenant le cache local)
-        const frontY = this.get3DElevationAt(x + sinA * sampleDist, z + cosA * sampleDist);
-        const backY = this.get3DElevationAt(x - sinA * sampleDist, z - cosA * sampleDist);
-        const leftY = this.get3DElevationAt(x + cosA * sampleDist, z - sinA * sampleDist);
-        const rightY = this.get3DElevationAt(x - cosA * sampleDist, z + sinA * sampleDist);
+        // Élévations aux 4 points — passe callerId et currentY pour éviter la pollution cache
+        const frontY = this.get3DElevationAt(x + sinA * sampleDist, z + cosA * sampleDist, currentY, callerId);
+        const backY = this.get3DElevationAt(x - sinA * sampleDist, z - cosA * sampleDist, currentY, callerId);
+        const leftY = this.get3DElevationAt(x + cosA * sampleDist, z - sinA * sampleDist, currentY, callerId);
+        const rightY = this.get3DElevationAt(x - cosA * sampleDist, z + sinA * sampleDist, currentY, callerId);
 
         this._slopeResult.pitch = Math.atan2(backY - frontY, sampleDist * 2);
         this._slopeResult.roll = Math.atan2(leftY - rightY, sampleDist * 2);
