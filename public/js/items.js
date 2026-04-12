@@ -301,7 +301,6 @@ export class Obstacle {
         this.active = true;
         this.lifetime = this.config.lifetime;
         this.ignoreOwnerTime = 30;    // Frames d'immunité pour le créateur
-        this.layer = ownerKart.currentLayer !== undefined ? ownerKart.currentLayer : (y > 15 ? 1 : 0);
 
         this.createMesh();
     }
@@ -344,9 +343,8 @@ export class Obstacle {
         // Ignorer le créateur pendant le délai d'immunité
         if (this.ignoreOwnerTime > 0 && kart === this.ownerKart) return false;
 
-        // Filtrer par niveau : ignorer si sol/pont différent (croisement figure-8)
-        const kartLayer = kart.currentLayer !== undefined ? kart.currentLayer : (kart.y > 15 ? 1 : 0);
-        if (kartLayer !== this.layer) return false;
+        // Filtrer par élévation : ignorer si sol/pont différent (croisement figure-8)
+        if (Math.abs(kart.y - this.y) > 10) return false;
 
         const dx = kart.x - this.x;
         const dz = kart.z - this.z;
