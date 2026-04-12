@@ -1,0 +1,17 @@
+{
+    "name": "Pills Stadium - Kart Racing",
+    "short_name": "Pills Stadium",
+    "description": "Jeu de kart 3D multijoueur",
+    "start_url": "/",
+    "display": "fullscreen",
+    "orientation": "landscape",
+    "theme_color": "#000000",
+    "background_color": "#000000",
+    "icons": [
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🏎️</text></svg>",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        }
+    ]
+}

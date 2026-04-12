@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui-org/nicegui/main/.schemas/capabilities.json",
+  "identifier": "default",
+  "description": "Default capabilities for Pills Stadium",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

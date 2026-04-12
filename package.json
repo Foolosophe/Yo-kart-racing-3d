@@ -1,0 +1,30 @@
+{
+  "name": "pills-stadium",
+  "version": "1.0.0",
+  "description": "🏎️ Jeu de course de karts 3D inspiré de Mario Kart",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "keywords": [
+    "game",
+    "racing",
+    "kart",
+    "3d",
+    "threejs",
+    "webgl"
+  ],
+  "author": "YdvSystems",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/cli": "^2.10.0"
+  }
+}
