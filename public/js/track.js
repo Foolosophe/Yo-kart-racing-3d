@@ -1210,7 +1210,9 @@ export class Track {
             const next = (i + 1) % n;
 
             // Skipper les segments ground dans la zone pont (pas une surface physique)
-            if (bz && i >= bz.groundStartIdx && i <= bz.groundEndIdx) continue;
+            // Bornes strictes : les segments aux limites sont rendus (continuite visuelle)
+            // Le bridge mesh chevauche legerement aux bords (invisible, bridge au-dessus)
+            if (bz && i > bz.groundStartIdx && i < bz.groundEndIdx) continue;
 
             if (!this.innerPoints[i] || !this.outerPoints[i] ||
                 !this.innerPoints[next] || !this.outerPoints[next]) {
@@ -1459,7 +1461,8 @@ export class Track {
 
             for (let i = 0; i < n; i++) {
                 // Skipper les segments ground dans la zone pont (pas de murs fantômes)
-                if (bz && i >= bz.groundStartIdx && i <= bz.groundEndIdx) continue;
+                // Bornes strictes : murs aux limites rendus (continuite visuelle)
+                if (bz && i > bz.groundStartIdx && i < bz.groundEndIdx) continue;
 
                 const next = (i + 1) % n;
                 const p1 = points[i];
