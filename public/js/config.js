@@ -61,7 +61,11 @@ export const CONFIG = {
         smoothing: 0.2,
         fovNormal: 75,          // FOV légèrement plus large
         fovBoost: 92,           // FOV élargi pendant le boost (+17°)
-        fovFinalLap: 72         // FOV resserré au dernier tour (tension)
+        fovFinalLap: 72,        // FOV resserré au dernier tour (tension)
+        // Spring-damper angulaire (style Mario Kart)
+        // Intégration en secondes réelles. Critical damping = 2 * sqrt(springK).
+        springK: 80,            // Raideur du ressort angulaire (~0.45s pour rattraper)
+        damping: 15             // Amortissement angulaire (critique ≈ 17.9, légèrement sous-amorti)
     },
     
     // Système de tremplin / saut

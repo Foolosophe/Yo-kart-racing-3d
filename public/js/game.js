@@ -782,9 +782,10 @@ export class Game {
         this.player.airborne = false;
         this.player.airborneVelocityY = 0;
 
-        // Repositionner la caméra derrière le joueur
+        // Repositionner la caméra derrière le joueur (reset spring-damper angulaire)
         this.smoothedCameraAngle = this.player.angle;
-        if (this._smoothCamAngle !== undefined) this._smoothCamAngle = this.player.angle;
+        this._camAngle = this.player.angle;
+        this._camAngleVel = 0;
         this.initCameraPosition();
     }
 
@@ -928,6 +929,8 @@ export class Game {
         // Facteur de temps pour des mouvements fluides indépendants du framerate
         // Sur mobile : FIXE à 1.0 pour éliminer le jitter caméra dû au rAF timing irrégulier
         const dtFactor = this.isMobile ? 1.0 : Math.min(dt || 0.016, 0.05) * 60;
+        // dt en secondes réelles pour le spring-damper angulaire
+        const dtSec = this.isMobile ? (1 / 60) : Math.min(dt || 0.016, 0.05);
 
         // Sur l'écran titre ou countdown
         if (this.state === 'title' || this.state === 'countdown') {
@@ -1029,36 +1032,39 @@ export class Game {
             if (this._lookBehindFactor > 0.99) this._lookBehindFactor = 1;
             const lookBehindAngle = this._lookBehindFactor * Math.PI;
 
+            // Source position/angle : interpolée sur mobile, directe sur desktop
+            const kartX = this.isMobile ? (p._renderX ?? p.x) : p.x;
+            const kartY = this.isMobile ? (p._renderY ?? p.y) : p.y;
+            const kartZ = this.isMobile ? (p._renderZ ?? p.z) : p.z;
+            const kartAngle = this.isMobile ? (p._renderAngle ?? p.angle) : p.angle;
+
+            // === SPRING-DAMPER ANGULAIRE (unifié mobile/desktop) ===
+            // Intégration semi-implicite Euler en secondes réelles
+            if (this._camAngle === undefined) this._camAngle = kartAngle;
+            if (this._camAngleVel === undefined) this._camAngleVel = 0;
+
+            let angleDiff = kartAngle - this._camAngle;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+            const angularAcc = cfg.springK * angleDiff - cfg.damping * this._camAngleVel;
+            this._camAngleVel += angularAcc * dtSec;
+            this._camAngle += this._camAngleVel * dtSec;
+
+            // Position XZ depuis l'angle lissé (pas de lerp position)
+            const camAngle = this._camAngle + lookBehindAngle;
+            this.camera.position.x = kartX - Math.sin(camAngle) * camDist;
+            this.camera.position.z = kartZ - Math.cos(camAngle) * camDist;
+
+            // Y : comportement original conservé (lerp, pas de spring-damper)
             if (this.isMobile) {
-                // Mobile : utiliser les positions interpolées (fixed timestep)
-                const px = p._renderX !== undefined ? p._renderX : p.x;
-                const py = p._renderY !== undefined ? p._renderY : p.y;
-                const pz = p._renderZ !== undefined ? p._renderZ : p.z;
-                const pa = p._renderAngle !== undefined ? p._renderAngle : p.angle;
-
-                // Lisser l'angle caméra pour un suivi fluide
-                if (this._smoothCamAngle === undefined) this._smoothCamAngle = pa;
-                let angleDiff = pa - this._smoothCamAngle;
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                this._smoothCamAngle += angleDiff * Math.min(0.12 * dtFactor, 0.6);
-
-                const camAngle = this._smoothCamAngle + lookBehindAngle;
-                this.camera.position.x = px - Math.sin(camAngle) * camDist;
-                this.camera.position.z = pz - Math.cos(camAngle) * camDist;
-                // Lisser le Y de la caméra aussi pour éviter les bonds
-                const targetCamYMobile = py + camHeight;
+                const targetCamYMobile = kartY + camHeight;
                 if (this._smoothCamY === undefined) this._smoothCamY = targetCamYMobile;
                 this._smoothCamY += (targetCamYMobile - this._smoothCamY) * Math.min(0.1 * dtFactor, 0.5);
                 this.camera.position.y = this._smoothCamY;
             } else {
-                const camAngle = p.angle + lookBehindAngle;
-                const targetCamX = p.x - Math.sin(camAngle) * camDist;
-                const targetCamZ = p.z - Math.cos(camAngle) * camDist;
-                const targetCamY = p.y + camHeight;
+                const targetCamY = kartY + camHeight;
                 const camLerp = Math.min(0.4 * dtFactor, 0.9);
-                this.camera.position.x += (targetCamX - this.camera.position.x) * camLerp;
-                this.camera.position.z += (targetCamZ - this.camera.position.z) * camLerp;
                 this.camera.position.y += (targetCamY - this.camera.position.y) * camLerp;
             }
 
@@ -1077,7 +1083,7 @@ export class Game {
 
             // Regarder devant (ou derrière) le joueur
             const lookAhead = this.isMobile ? cfg.lookAheadDistance * 0.7 : cfg.lookAheadDistance;
-            const baseLookAngle = this.isMobile ? this._smoothCamAngle : p.angle;
+            const baseLookAngle = this._camAngle !== undefined ? this._camAngle : p.angle;
             const lookAngle = baseLookAngle + lookBehindAngle;
             const lookBaseX = this.isMobile ? (p._renderX !== undefined ? p._renderX : p.x) : p.x;
             const lookBaseY = this.isMobile ? (p._renderY !== undefined ? p._renderY : p.y) : p.y;
@@ -1087,15 +1093,11 @@ export class Game {
             const lookZ = lookBaseZ + Math.cos(lookAngle) * lookAhead;
             this.camera.lookAt(lookX, lookY, lookZ);
 
-            // Camera roll en virage (inclinaison laterale) - désactivé sur mobile
-            let angleDelta = p.angle - (this._lastPlayerAngle || p.angle);
-            this._lastPlayerAngle = p.angle;
-            // Corriger le wrapping d'angle (évite les sauts brusques à ±PI)
-            while (angleDelta > Math.PI) angleDelta -= Math.PI * 2;
-            while (angleDelta < -Math.PI) angleDelta += Math.PI * 2;
+            // Camera roll en virage basé sur la vélocité angulaire du spring-damper
+            const rollSource = this._camAngleVel || 0;
             const rollMax = this.isMobile ? 0 : 0.04;
-            const rollMult = this.isMobile ? 0 : 1.5;
-            const targetRoll = Math.max(-rollMax, Math.min(rollMax, -angleDelta * rollMult));
+            const rollMult = this.isMobile ? 0 : 25;
+            const targetRoll = Math.max(-rollMax, Math.min(rollMax, -rollSource * rollMult));
             const rollLerp = Math.min((this.isMobile ? 0.05 : 0.08) * dtFactor, 0.5);
             this.camera.rotation.z += (targetRoll - this.camera.rotation.z) * rollLerp;
 
