@@ -6,3 +6,4 @@ Thumbs.db
 src-tauri/target/
 .claude/
 DEPLOY.md
+PROMPTS_REFACTORING.md
