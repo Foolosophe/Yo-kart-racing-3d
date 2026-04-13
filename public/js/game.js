@@ -459,12 +459,30 @@ export class Game {
         }
         // Écran de résultats
         else if (this.state === 'finished') {
+            // Navigation entre REJOUER (0) et MENU (1)
+            if (this._resultFocus === undefined) this._resultFocus = 0;
+
             const bPressed = gp.buttons[1] && gp.buttons[1].pressed;
             const wasB = this.gamepadButtonsPressed.b;
             this.gamepadButtonsPressed.b = bPressed;
-            if (confirmPressed && !wasConfirm) {
-                this.restartGame();
+
+            // D-pad ou stick gauche pour naviguer
+            if ((dpadLeft && !wasLeft) || (dpadRight && !wasRight)) {
+                this._resultFocus = this._resultFocus === 0 ? 1 : 0;
+                // Highlight visuel
+                const restartBtn = document.getElementById('restartButton');
+                const menuBtn = document.getElementById('menuButton');
+                if (restartBtn) restartBtn.classList.toggle('focused', this._resultFocus === 0);
+                if (menuBtn) menuBtn.classList.toggle('focused', this._resultFocus === 1);
             }
+
+            // A confirme le bouton sélectionné
+            if (confirmPressed && !wasConfirm) {
+                if (this._resultFocus === 0) this.restartGame();
+                else this.goToMenu();
+            }
+
+            // B = raccourci direct menu (standard "back")
             if (bPressed && !wasB) {
                 this.goToMenu();
             }
@@ -1887,6 +1905,13 @@ export class Game {
         if (this.state === 'finished') return;
 
         this.state = 'finished';
+        // Reset focus manette sur REJOUER
+        this._resultFocus = 0;
+        const restartBtn = document.getElementById('restartButton');
+        const menuBtn = document.getElementById('menuButton');
+        if (restartBtn) restartBtn.classList.add('focused');
+        if (menuBtn) menuBtn.classList.remove('focused');
+
         if (this.isMobile) this.showMobileControls(false);
         // Désactiver le portrait warning pour ne pas couvrir les résultats
         document.getElementById('portraitWarning')?.classList.remove('race-active');

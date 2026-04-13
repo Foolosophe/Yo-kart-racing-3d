@@ -1704,6 +1704,12 @@ html, body {
     border: 1px solid rgba(255,255,255,0.3);
 }
 
+.result-btn.focused {
+    transform: scale(1.08);
+    box-shadow: 0 0 20px rgba(255,107,53,0.5);
+    outline: 2px solid #ff6b35;
+}
+
 .result-btn:hover {
     transform: scale(1.05);
 }
