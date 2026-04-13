@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json">
     <title>🏎️ Pills Stadium - Kart Racing</title>
-    <link rel="stylesheet" href="css/style.css?t=20260413o">
+    <link rel="stylesheet" href="css/style.css?t=20260413w">
 </head>
 <body>
     <div id="gameContainer">
@@ -307,7 +307,7 @@
                 </div>
             </div>
 
-            <!-- Standings (2/3) + Leaderboard (1/3) côte à côte -->
+            <!-- Standings + Boutons + Leaderboard -->
             <div class="result-main-row result-section">
                 <div class="result-standings" id="resultStandings">
                     <table class="standings-table">
@@ -322,6 +322,10 @@
                         </thead>
                         <tbody id="standingsBody"></tbody>
                     </table>
+                </div>
+                <div class="result-buttons-inline">
+                    <button class="result-btn primary" id="restartButton">REJOUER</button>
+                    <button class="result-btn secondary" id="menuButton">MENU</button>
                 </div>
                 <div class="global-leaderboard" id="globalLeaderboard">
                     <div class="leaderboard-title">🌍 TOP 10 MONDIAL</div>
@@ -368,11 +372,7 @@
                 <div class="top5-list" id="top5List"></div>
             </div>
 
-            <!-- Boutons -->
-            <div class="result-buttons result-section">
-                <button class="result-btn primary" id="restartButton">REJOUER</button>
-                <button class="result-btn secondary" id="menuButton">MENU</button>
-            </div>
+            <!-- Boutons (déplacés dans result-main-row ci-dessus) -->
             <div class="result-hint result-section">
                 <kbd>A</kbd> Rejouer · <kbd>B</kbd> Menu
             </div>
@@ -413,7 +413,7 @@
     <script src="js/three.min.js"></script>
     
     <!-- Game modules -->
-    <script type="module" src="js/main.js?t=20260413o"></script>
+    <script type="module" src="js/main.js?t=20260413w"></script>
 
 </body>
 </html>

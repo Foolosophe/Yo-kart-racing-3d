@@ -1673,10 +1673,14 @@ html, body {
     animation: recordShine 2s ease-in-out infinite, recordPulse 0.6s ease-in-out infinite alternate;
 }
 
-.result-buttons {
+.result-buttons, .result-buttons-inline {
     display: flex;
     gap: 10px;
     margin-top: auto;
+}
+
+.result-buttons-inline {
+    justify-content: center;
 }
 
 .result-btn {
@@ -2730,53 +2734,85 @@ html, body {
         justify-content: center;
     }
 
-    /* === RÉSULTATS : layout compact 2 zones === */
+    /* === RÉSULTATS : grid avec boutons à côté du leaderboard === */
     .result-overlay {
-        display: grid;
-        grid-template-columns: 200px 1fr;
-        grid-template-rows: auto auto 1fr auto;
-        grid-template-areas:
-            "left-top  right"
-            "records   right"
-            "timeline  right"
-            "buttons   right";
-        padding: 6px 10px;
-        gap: 4px 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 14px 20px;
+        gap: 6px;
         overflow: hidden;
-        justify-content: unset;
-        align-items: start;
+        justify-content: flex-start;
     }
 
-    /* Colonne gauche */
-    .result-overlay .result-header  { grid-area: left-top; flex-direction: column; align-items: flex-start; gap: 3px; }
-    .result-overlay .result-new-record { grid-area: records; font-size: 11px; }
-    .result-overlay .result-timeline { grid-area: timeline; align-self: end; }
-    .result-overlay .result-buttons  { grid-area: buttons;  position: static; background: none; padding: 4px 0; width: auto; }
+    /* Header en ligne */
+    .result-overlay .result-header {
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+    }
 
-    /* Colonne droite : standings + leaderboard */
+    .result-overlay .result-new-record { font-size: 12px; flex-shrink: 0; }
+
+    /* Timeline pleine largeur */
+    .result-overlay .result-timeline {
+        width: 100%;
+        flex-shrink: 0;
+    }
+
+    /* Standings + boutons à gauche, leaderboard à droite */
     .result-overlay .result-main-row {
-        grid-area: right;
-        flex-direction: column;
-        gap: 4px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+            "standings leaderboard"
+            "btns      leaderboard";
+        gap: 6px 12px;
+        width: 100%;
+        align-items: start;
+        flex: 1;
+    }
+
+    .result-overlay .result-main-row .result-standings {
+        grid-area: standings;
+    }
+
+    .result-overlay .result-main-row .result-buttons-inline {
+        grid-area: btns;
+        padding: 4px 0;
+        align-self: center;
+    }
+
+    .result-overlay .result-main-row .global-leaderboard {
+        grid-area: leaderboard;
         align-self: stretch;
         overflow-y: auto;
-        max-height: calc(100dvh - 20px);
         -webkit-overflow-scrolling: touch;
+        max-height: none;
     }
 
-    /* Détails cachés en paysage (récupérables en faisant défiler — mais on garde simple) */
+    /* Détails cachés */
     .result-overlay .result-details { display: none !important; }
     .result-overlay .result-hint    { display: none !important; }
 
-    /* Textes compacts */
-    .result-title              { font-size: 22px; margin: 0; }
-    .medal-emoji               { font-size: 18px; }
-    .medal-label               { font-size: 9px; letter-spacing: 1px; }
+    /* Boutons inline entre standings et leaderboard */
+    .result-overlay .result-buttons-inline {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        padding: 6px 0;
+    }
+
+    /* Textes */
+    .result-title              { font-size: 24px; margin: 0; }
+    .medal-emoji               { font-size: 20px; }
+    .medal-label               { font-size: 10px; letter-spacing: 1px; }
     .result-delta .delta-value { font-size: 14px; }
     .result-delta .delta-label { font-size: 9px; }
 
-    /* Boutons compacts */
-    .result-btn { padding: 8px 14px; font-size: 13px; min-width: 80px; }
+    /* Boutons */
+    .result-btn { padding: 10px 20px; font-size: 14px; min-width: 100px; }
 
     /* Table standings compact */
     .standings-table          { font-size: 9px; }
