@@ -43,7 +43,26 @@ export class Physics {
                 }
             }
         }
-        console.log('Wall grid built: ' + this._wallGrid.size + ' cells for ' + this.track.wallSegments.length + ' wall segments');
+        // Ajouter les piliers dans la grille
+        this._pillarCells = new Map();
+        const pillars = this.track.pillarColliders || [];
+        for (const p of pillars) {
+            const pCellMinX = Math.floor((p.x - p.radius) / cellSize);
+            const pCellMaxX = Math.floor((p.x + p.radius) / cellSize);
+            const pCellMinZ = Math.floor((p.z - p.radius) / cellSize);
+            const pCellMaxZ = Math.floor((p.z + p.radius) / cellSize);
+            for (let cx = pCellMinX; cx <= pCellMaxX; cx++) {
+                for (let cz = pCellMinZ; cz <= pCellMaxZ; cz++) {
+                    const key = this._cellKey(cx, cz);
+                    if (!this._pillarCells.has(key)) {
+                        this._pillarCells.set(key, []);
+                    }
+                    this._pillarCells.get(key).push(p);
+                }
+            }
+        }
+
+        console.log('Wall grid built: ' + this._wallGrid.size + ' cells for ' + this.track.wallSegments.length + ' wall segments, ' + pillars.length + ' pillars');
     }
 
     // =========================================================
@@ -112,7 +131,72 @@ export class Physics {
 
         return result;
     }
-    
+
+    // =========================================================
+    // COLLISION PILIERS - Obstacles circulaires (piliers de pont)
+    // =========================================================
+    checkPillarCollision(x, z, radius, playerY = null) {
+        if (!this._wallGrid) this.buildWallGrid();
+        if (!this._pillarCells || this._pillarCells.size === 0) {
+            if (!this._pillarResult) this._pillarResult = { hit: false, x: 0, z: 0 };
+            this._pillarResult.hit = false;
+            this._pillarResult.x = x;
+            this._pillarResult.z = z;
+            return this._pillarResult;
+        }
+
+        const cellSize = this._wallGridSize;
+        const cx = Math.floor(x / cellSize);
+        const cz = Math.floor(z / cellSize);
+
+        let closestDist = Infinity;
+        let bestPillar = null;
+
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dz = -1; dz <= 1; dz++) {
+                const key = this._cellKey(cx + dx, cz + dz);
+                const pillars = this._pillarCells.get(key);
+                if (!pillars) continue;
+
+                for (let i = 0; i < pillars.length; i++) {
+                    const p = pillars[i];
+                    // Ignorer si le kart est au-dessus du pilier (sur le pont)
+                    if (playerY !== null && playerY > p.topY - 2) continue;
+
+                    const pdx = x - p.x;
+                    const pdz = z - p.z;
+                    const dist = Math.sqrt(pdx * pdx + pdz * pdz);
+                    const minDist = radius + p.radius;
+
+                    if (dist < minDist && dist > 0.01 && dist < closestDist) {
+                        closestDist = dist;
+                        bestPillar = p;
+                    }
+                }
+            }
+        }
+
+        if (!this._pillarResult) this._pillarResult = { hit: false, x: 0, z: 0 };
+        const result = this._pillarResult;
+
+        if (bestPillar) {
+            const pdx = x - bestPillar.x;
+            const pdz = z - bestPillar.z;
+            const normalX = pdx / closestDist;
+            const normalZ = pdz / closestDist;
+            const overlap = radius + bestPillar.radius - closestDist + 0.5;
+            result.hit = true;
+            result.x = x + normalX * overlap;
+            result.z = z + normalZ * overlap;
+        } else {
+            result.hit = false;
+            result.x = x;
+            result.z = z;
+        }
+
+        return result;
+    }
+
     // Collision entre deux karts quelconques
     checkKartPairCollision(kartA, kartB) {
         // Ne pas collisionner si les karts sont sur des couches différentes

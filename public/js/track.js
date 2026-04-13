@@ -647,6 +647,7 @@ export class Track {
         this.innerPoints = [];
         this.outerPoints = [];
         this.wallSegments = [];
+        this.pillarColliders = [];
         this.checkpointZones = [];
         this.boostZones = [];
         this.rampZones = [];
@@ -1391,16 +1392,27 @@ export class Track {
 
     // Créer les piliers du pont à partir de la branche bridge
     _createBridgePillarsFromBranch(bridgeBranch) {
+        if (!this.pillarColliders) this.pillarColliders = [];
         const n = bridgeBranch.segments.length;
         for (let i = 0; i < n; i += 10) {
             const seg = bridgeBranch.segments[i];
             if (seg.y > 5) { // Seulement si suffisamment haut
-                const pillarGeo = new THREE.CylinderGeometry(1.5, 2, seg.y, 8);
+                const pillarRadius = 2;
+                const pillarGeo = new THREE.CylinderGeometry(1.5, pillarRadius, seg.y, 8);
                 const pillarMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 });
                 const pillar = new THREE.Mesh(pillarGeo, pillarMat);
                 pillar.position.set(seg.x, seg.y / 2, seg.z);
                 this.scene.add(pillar);
                 this.trackMeshes.push(pillar);
+
+                // Collider circulaire pour la physique
+                this.pillarColliders.push({
+                    x: seg.x,
+                    z: seg.z,
+                    radius: pillarRadius,
+                    elevation: 0,       // Les piliers sont au sol
+                    topY: seg.y         // Hauteur max du pilier
+                });
             }
         }
     }

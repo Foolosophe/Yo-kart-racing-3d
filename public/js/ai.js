@@ -241,7 +241,7 @@ export class AI {
         const newX = this.x + Math.sin(this.angle) * this.speed * dtFactor;
         const newZ = this.z + Math.cos(this.angle) * this.speed * dtFactor;
 
-        // Collision murs (simple)
+        // Collision murs
         const collision = physics.checkWallCollision(newX, newZ, CONFIG.physics.kartRadius, this.targetY);
 
         if (collision.hit) {
@@ -249,6 +249,14 @@ export class AI {
         }
         this.x = collision.x;
         this.z = collision.z;
+
+        // Collision piliers (obstacles circulaires sous le pont)
+        const pillarHit = physics.checkPillarCollision(this.x, this.z, CONFIG.physics.kartRadius, this.targetY);
+        if (pillarHit.hit) {
+            this.speed *= CONFIG.physics.wallSpeedRetain;
+        }
+        this.x = pillarHit.x;
+        this.z = pillarHit.z;
 
         // Mise à jour de l'élévation
         if (track.is3DReliefEnabled && track.is3DReliefEnabled()) {

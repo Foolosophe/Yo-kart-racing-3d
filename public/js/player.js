@@ -226,15 +226,24 @@ export class Player {
         const newX = this.x + Math.sin(this.angle) * this.speed * dtFactor;
         const newZ = this.z + Math.cos(this.angle) * this.speed * dtFactor;
 
-        // Collision murs (simple)
+        // Collision murs
         const collision = physics.checkWallCollision(newX, newZ, cfg.kartRadius, this.targetY);
 
         if (collision.hit) {
             this.speed *= cfg.wallSpeedRetain;
         }
-        this.lastWallCollision = collision.hit; // Exposer l'état pour le screen shake
+        this.lastWallCollision = collision.hit;
         this.x = collision.x;
         this.z = collision.z;
+
+        // Collision piliers (obstacles circulaires sous le pont)
+        const pillarHit = physics.checkPillarCollision(this.x, this.z, cfg.kartRadius, this.targetY);
+        if (pillarHit.hit) {
+            this.speed *= cfg.wallSpeedRetain;
+            this.lastWallCollision = true;
+        }
+        this.x = pillarHit.x;
+        this.z = pillarHit.z;
 
         // Mise à jour de l'élévation
         if (track.is3DReliefEnabled && track.is3DReliefEnabled()) {
