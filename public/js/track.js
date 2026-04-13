@@ -687,6 +687,7 @@ export class Track {
 
         this.createTrackMesh();
         this.createWalls();
+        this.createCurbs();
         this.createCheckpoints();
         this.createStartLine();
         this.createBoostZones();
@@ -1697,7 +1698,213 @@ export class Track {
         createBridgeSideWalls(bridgeBranch.innerPoints, true);
         createBridgeSideWalls(bridgeBranch.outerPoints, false);
     }
-    
+
+    // ============================================================
+    // CURBS - Vibreurs rouge/blanc sur les bords de piste
+    // ============================================================
+    createCurbs() {
+        const branch = this.graph.getActiveBranch();
+        const use3DRelief = branch && branch.segments.length > 0;
+        const n = this.centerPoints.length;
+        const bz = this.bridgeZone;
+
+        const curbWidth = 4;        // Largeur des bandes de curb (visible sur piste de 80u)
+        const curbYOffset = 0.15;   // Juste au-dessus de la surface de piste (+0.1)
+        const stripeLength = 2;     // Alternance rouge/blanc tous les 2 segments
+
+        // Couleurs des curbs
+        const redR = 0xcc / 255, redG = 0x00 / 255, redB = 0x00 / 255;
+        const whiteR = 1.0, whiteG = 1.0, whiteB = 1.0;
+
+        const createSideCurbs = (edgePoints, branchEdgePoints, isInner) => {
+            const vertices = [];
+            const colors = [];
+
+            for (let i = 0; i < n; i++) {
+                // Skip zone pont ground (comme murs/piste)
+                if (bz && i > bz.groundStartIdx && i < bz.groundEndIdx) continue;
+
+                const next = (i + 1) % n;
+                if (!edgePoints[i] || !edgePoints[next]) continue;
+                if (!this.centerPoints[i] || !this.centerPoints[next]) continue;
+
+                // Points du bord (là où est le mur)
+                const e1x = edgePoints[i].x;
+                const e1z = edgePoints[i].z;
+                const e2x = edgePoints[next].x;
+                const e2z = edgePoints[next].z;
+
+                // Direction du bord vers le centre de la piste
+                const c1x = this.centerPoints[i].x;
+                const c1z = this.centerPoints[i].z;
+                const c2x = this.centerPoints[next].x;
+                const c2z = this.centerPoints[next].z;
+
+                const d1x = c1x - e1x;
+                const d1z = c1z - e1z;
+                const len1 = Math.sqrt(d1x * d1x + d1z * d1z);
+                if (len1 < 0.01) continue;
+
+                const d2x = c2x - e2x;
+                const d2z = c2z - e2z;
+                const len2 = Math.sqrt(d2x * d2x + d2z * d2z);
+                if (len2 < 0.01) continue;
+
+                // Points intérieurs du curb (décalés vers le centre de la piste)
+                const ci1x = e1x + (d1x / len1) * curbWidth;
+                const ci1z = e1z + (d1z / len1) * curbWidth;
+                const ci2x = e2x + (d2x / len2) * curbWidth;
+                const ci2z = e2z + (d2z / len2) * curbWidth;
+
+                // Élévation Y
+                let y1, y2;
+                if (use3DRelief && branchEdgePoints && branchEdgePoints[i] && branchEdgePoints[next]) {
+                    y1 = branchEdgePoints[i].y + curbYOffset;
+                    y2 = branchEdgePoints[next].y + curbYOffset;
+                } else {
+                    y1 = curbYOffset;
+                    y2 = curbYOffset;
+                }
+
+                // 2 triangles formant un quad plat
+                // Triangle 1 : edge1, edge2, curbInner1
+                vertices.push(
+                    e1x, y1, e1z,
+                    e2x, y2, e2z,
+                    ci1x, y1, ci1z
+                );
+                // Triangle 2 : edge2, curbInner2, curbInner1
+                vertices.push(
+                    e2x, y2, e2z,
+                    ci2x, y2, ci2z,
+                    ci1x, y1, ci1z
+                );
+
+                // Couleur : alternance rouge/blanc
+                const isRed = Math.floor(i / stripeLength) % 2 === 0;
+                const r = isRed ? redR : whiteR;
+                const g = isRed ? redG : whiteG;
+                const b = isRed ? redB : whiteB;
+                for (let v = 0; v < 6; v++) {
+                    colors.push(r, g, b);
+                }
+            }
+
+            if (vertices.length === 0) return;
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+            geo.computeVertexNormals();
+
+            const mat = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                roughness: 0.8,
+                side: THREE.DoubleSide
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            this.scene.add(mesh);
+            this.trackMeshes.push(mesh);
+
+            console.log((isInner ? 'Inner' : 'Outer') + ' curbs: 1 merged mesh (' + (vertices.length / 3) + ' vertices)');
+        };
+
+        // Curbs inner + outer (ground)
+        const branchInner = use3DRelief ? branch.innerPoints : null;
+        const branchOuter = use3DRelief ? branch.outerPoints : null;
+        createSideCurbs(this.innerPoints, branchInner, true);
+        createSideCurbs(this.outerPoints, branchOuter, false);
+
+        // Curbs pont (si circuit infini)
+        const bridgeBranch = this.graph.getBranch('infini_bridge');
+        if (bridgeBranch && bridgeBranch.segments.length > 1) {
+            this._createBridgeCurbs(bridgeBranch, curbWidth, curbYOffset, stripeLength);
+        }
+    }
+
+    // Curbs pour le pont (branche bridge séparée)
+    _createBridgeCurbs(bridgeBranch, curbWidth, curbYOffset, stripeLength) {
+        const bn = bridgeBranch.segments.length;
+
+        const redR = 0xcc / 255, redG = 0x00 / 255, redB = 0x00 / 255;
+        const whiteR = 1.0, whiteG = 1.0, whiteB = 1.0;
+
+        const createBridgeSideCurbs = (edgePoints, isInner) => {
+            const vertices = [];
+            const colors = [];
+
+            for (let i = 0; i < bn - 1; i++) {
+                const next = i + 1;
+                const p1 = edgePoints[i];
+                const p2 = edgePoints[next];
+                const c1 = bridgeBranch.segments[i];
+                const c2 = bridgeBranch.segments[next];
+                if (!p1 || !p2 || !c1 || !c2) continue;
+
+                // Direction du bord vers le centre
+                const d1x = c1.x - p1.x;
+                const d1z = c1.z - p1.z;
+                const len1 = Math.sqrt(d1x * d1x + d1z * d1z);
+                if (len1 < 0.01) continue;
+
+                const d2x = c2.x - p2.x;
+                const d2z = c2.z - p2.z;
+                const len2 = Math.sqrt(d2x * d2x + d2z * d2z);
+                if (len2 < 0.01) continue;
+
+                const ci1x = p1.x + (d1x / len1) * curbWidth;
+                const ci1z = p1.z + (d1z / len1) * curbWidth;
+                const ci2x = p2.x + (d2x / len2) * curbWidth;
+                const ci2z = p2.z + (d2z / len2) * curbWidth;
+
+                const y1 = p1.y + curbYOffset;
+                const y2 = p2.y + curbYOffset;
+
+                // Triangle 1
+                vertices.push(
+                    p1.x, y1, p1.z,
+                    p2.x, y2, p2.z,
+                    ci1x, y1, ci1z
+                );
+                // Triangle 2
+                vertices.push(
+                    p2.x, y2, p2.z,
+                    ci2x, y2, ci2z,
+                    ci1x, y1, ci1z
+                );
+
+                const isRed = Math.floor(i / stripeLength) % 2 === 0;
+                const r = isRed ? redR : whiteR;
+                const g = isRed ? redG : whiteG;
+                const b = isRed ? redB : whiteB;
+                for (let v = 0; v < 6; v++) {
+                    colors.push(r, g, b);
+                }
+            }
+
+            if (vertices.length === 0) return;
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+            geo.computeVertexNormals();
+
+            const mat = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                roughness: 0.8,
+                side: THREE.DoubleSide
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            this.scene.add(mesh);
+            this.trackMeshes.push(mesh);
+
+            console.log('Bridge ' + (isInner ? 'inner' : 'outer') + ' curbs: 1 merged mesh');
+        };
+
+        createBridgeSideCurbs(bridgeBranch.innerPoints, true);
+        createBridgeSideCurbs(bridgeBranch.outerPoints, false);
+    }
+
     createCheckpoints() {
         const n = this.centerPoints.length;
         const { width } = CONFIG.track;
