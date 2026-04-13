@@ -90,10 +90,10 @@ export class Player {
 
         // === EFFETS D'ITEMS ===
         // Décrementer les timers
-        if (this.shieldTime > 0) this.shieldTime -= dtFactor;
-        if (this.slowdownTime > 0) this.slowdownTime -= dtFactor;
-        if (this.hitImmunity > 0) this.hitImmunity -= dtFactor;
-        if (this.itemCooldown > 0) this.itemCooldown -= dtFactor;
+        if (this.shieldTime > 0) this.shieldTime = Math.max(0, this.shieldTime - dtFactor);
+        if (this.slowdownTime > 0) this.slowdownTime = Math.max(0, this.slowdownTime - dtFactor);
+        if (this.hitImmunity > 0) this.hitImmunity = Math.max(0, this.hitImmunity - dtFactor);
+        if (this.itemCooldown > 0) this.itemCooldown = Math.max(0, this.itemCooldown - dtFactor);
 
         // Combo drift timer - reset si trop longtemps sans drift
         if (this.comboTimer > 0) {

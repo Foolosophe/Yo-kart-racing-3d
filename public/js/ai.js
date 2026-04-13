@@ -90,10 +90,10 @@ export class AI {
         const dtFactor = delta * 60;
 
         // === EFFETS D'ITEMS ===
-        if (this.shieldTime > 0) this.shieldTime -= dtFactor;
-        if (this.slowdownTime > 0) this.slowdownTime -= dtFactor;
-        if (this.hitImmunity > 0) this.hitImmunity -= dtFactor;
-        if (this.itemCooldown > 0) this.itemCooldown -= dtFactor;
+        if (this.shieldTime > 0) this.shieldTime = Math.max(0, this.shieldTime - dtFactor);
+        if (this.slowdownTime > 0) this.slowdownTime = Math.max(0, this.slowdownTime - dtFactor);
+        if (this.hitImmunity > 0) this.hitImmunity = Math.max(0, this.hitImmunity - dtFactor);
+        if (this.itemCooldown > 0) this.itemCooldown = Math.max(0, this.itemCooldown - dtFactor);
         if (this.currentItem) this.itemHoldTime += dtFactor;
 
         // === RÉACTION HIT ===
