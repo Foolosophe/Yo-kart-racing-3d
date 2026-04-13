@@ -6,35 +6,106 @@ export class Kart {
     static create(scene, color = 0xe74c3c) {
         const group = new THREE.Group();
 
-        // Corps principal
-        const bodyGeo = new THREE.BoxGeometry(3, 0.8, 4.5);
-        const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.7 });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = 0.6;
-        group.add(body);
+        // === CORPS PROFILE (4 pièces) ===
+        const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.4, roughness: 0.5 });
 
-        // Cockpit
-        const cockpitGeo = new THREE.BoxGeometry(2, 0.6, 2);
-        const cockpitMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-        const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
-        cockpit.position.set(0, 1.1, -0.3);
-        group.add(cockpit);
+        // Nez avant — étroit et bas
+        const nose = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.2), bodyMat);
+        nose.position.set(0, 0.45, 2.0);
+        group.add(nose);
 
-        // Aileron arrière
-        const spoilerGeo = new THREE.BoxGeometry(3.2, 0.1, 0.4);
-        const spoilerMat = new THREE.MeshStandardMaterial({ color });
-        const spoiler = new THREE.Mesh(spoilerGeo, spoilerMat);
-        spoiler.position.set(0, 1.4, -2);
+        // Corps central
+        const bodyCenter = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.7, 2.5), bodyMat);
+        bodyCenter.position.set(0, 0.55, 0.2);
+        group.add(bodyCenter);
+
+        // Arrière — plus large et surélevé
+        const bodyRear = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.8, 1.2), bodyMat);
+        bodyRear.position.set(0, 0.65, -1.5);
+        group.add(bodyRear);
+
+        // Plancher
+        const floor = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.15, 4.2), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.3, roughness: 0.8 }));
+        floor.position.set(0, 0.25, 0.1);
+        group.add(floor);
+
+        // === COCKPIT (bords surélevés + pare-brise) ===
+        const cockpitDarkMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.15, 1.8), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+        seat.position.set(0, 0.95, -0.2);
+        group.add(seat);
+
+        const cockpitRimGeo = new THREE.BoxGeometry(0.15, 0.4, 1.8);
+        const rimLeft = new THREE.Mesh(cockpitRimGeo, cockpitDarkMat);
+        rimLeft.position.set(-0.9, 1.1, -0.2);
+        group.add(rimLeft);
+
+        const rimRight = new THREE.Mesh(cockpitRimGeo, cockpitDarkMat);
+        rimRight.position.set(0.9, 1.1, -0.2);
+        group.add(rimRight);
+
+        const rimBack = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 0.15), cockpitDarkMat);
+        rimBack.position.set(0, 1.1, -1.1);
+        group.add(rimBack);
+
+        // Pare-brise semi-transparent
+        const windshield = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.6, 0.5),
+            new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
+        );
+        windshield.position.set(0, 1.2, 0.7);
+        windshield.rotation.x = -0.3;
+        group.add(windshield);
+
+        // === GARDE-BOUES (4) ===
+        const fenderGeo = new THREE.BoxGeometry(0.6, 0.12, 1.0);
+        const fenderMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.3, roughness: 0.6 });
+        [
+            { x: -1.4, z: 1.3 },
+            { x: 1.4, z: 1.3 },
+            { x: -1.475, z: -1.3 },
+            { x: 1.475, z: -1.3 }
+        ].forEach(pos => {
+            const fender = new THREE.Mesh(fenderGeo, fenderMat);
+            fender.position.set(pos.x, 0.85, pos.z);
+            group.add(fender);
+        });
+
+        // === AILERON ARRIERE ===
+        const spoilerMat = new THREE.MeshStandardMaterial({ color, metalness: 0.4, roughness: 0.5 });
+
+        const spoiler = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 0.5), spoilerMat);
+        spoiler.position.set(0, 1.5, -2.1);
         group.add(spoiler);
 
-        const spoilerLegsGeo = new THREE.BoxGeometry(0.15, 0.5, 0.15);
+        const spoilerLegGeo = new THREE.BoxGeometry(0.12, 0.5, 0.12);
         [-1.3, 1.3].forEach(x => {
-            const leg = new THREE.Mesh(spoilerLegsGeo, spoilerMat);
-            leg.position.set(x, 1.15, -2);
+            const leg = new THREE.Mesh(spoilerLegGeo, spoilerMat);
+            leg.position.set(x, 1.25, -2.1);
             group.add(leg);
         });
 
-        // Roues
+        // === ECHAPPEMENTS (2 cylindres) ===
+        const exhaustGeo = new THREE.CylinderGeometry(0.12, 0.15, 0.6, 8);
+        const exhaustMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.6, roughness: 0.4 });
+        [-0.6, 0.6].forEach(x => {
+            const exhaust = new THREE.Mesh(exhaustGeo, exhaustMat);
+            exhaust.position.set(x, 0.55, -2.2);
+            exhaust.rotation.x = Math.PI / 2;
+            group.add(exhaust);
+        });
+
+        // === BANDES LATERALES (accent couleur) ===
+        const stripGeo = new THREE.BoxGeometry(0.05, 0.2, 3.5);
+        const stripMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.2, metalness: 0.4, roughness: 0.5 });
+        [-1.53, 1.53].forEach(x => {
+            const strip = new THREE.Mesh(stripGeo, stripMat);
+            strip.position.set(x, 0.6, 0.2);
+            group.add(strip);
+        });
+
+        // === ROUES (inchangées) ===
         const wheelGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16);
         const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
         const wheelPositions = [
@@ -44,29 +115,52 @@ export class Kart {
             { x: 1.4, z: -1.3, name: 'wheel3' }
         ];
 
+        const hubcapGeo = new THREE.CircleGeometry(0.3, 8);
+        const hubcapMat = new THREE.MeshStandardMaterial({ color, metalness: 0.5, roughness: 0.4 });
+
         wheelPositions.forEach(pos => {
             const wheel = new THREE.Mesh(wheelGeo, wheelMat);
             wheel.rotation.z = Math.PI / 2;
             wheel.position.set(pos.x, 0.5, pos.z);
             wheel.name = pos.name;
             group.add(wheel);
+
+            // Enjoliveur côté extérieur
+            const hubcap = new THREE.Mesh(hubcapGeo, hubcapMat);
+            hubcap.position.set(pos.x > 0 ? pos.x + 0.21 : pos.x - 0.21, 0.5, pos.z);
+            hubcap.rotation.y = pos.x > 0 ? Math.PI / 2 : -Math.PI / 2;
+            group.add(hubcap);
         });
 
-        // Pilote
-        const headGeo = new THREE.SphereGeometry(0.4, 16, 16);
-        const headMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
-        const head = new THREE.Mesh(headGeo, headMat);
-        head.position.set(0, 1.7, -0.3);
+        // === PILOTE ===
+        // Torse
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0xcccccc }));
+        torso.position.set(0, 1.25, -0.3);
+        group.add(torso);
+
+        // Tête
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffcc99 }));
+        head.position.set(0, 1.65, -0.3);
         group.add(head);
 
         // Casque
-        const helmetGeo = new THREE.SphereGeometry(0.45, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-        const helmetMat = new THREE.MeshStandardMaterial({ color });
-        const helmet = new THREE.Mesh(helmetGeo, helmetMat);
-        helmet.position.set(0, 1.75, -0.3);
+        const helmet = new THREE.Mesh(
+            new THREE.SphereGeometry(0.4, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+            new THREE.MeshStandardMaterial({ color })
+        );
+        helmet.position.set(0, 1.7, -0.3);
         group.add(helmet);
 
-        // Ombre avec dégradé radial (opaque au centre, transparent aux bords)
+        // Visière
+        const visor = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.6, 0.25),
+            new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+        );
+        visor.position.set(0, 1.6, 0.05);
+        visor.rotation.x = 0.2;
+        group.add(visor);
+
+        // === OMBRE (inchangée) ===
         const shadowTexture = Kart.createShadowTexture();
         const shadowGeo = new THREE.CircleGeometry(2.5, 32);
         const shadowMat = new THREE.MeshBasicMaterial({
@@ -77,7 +171,7 @@ export class Kart {
         });
         const shadow = new THREE.Mesh(shadowGeo, shadowMat);
         shadow.rotation.x = -Math.PI / 2;
-        shadow.position.y = -0.45;
+        shadow.position.y = 0.02;
         shadow.renderOrder = -1;
         group.add(shadow);
         group.userData.shadow = shadow;
@@ -146,8 +240,8 @@ export class Kart {
         canvas.height = size;
         const ctx = canvas.getContext('2d');
         const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-        gradient.addColorStop(0, 'rgba(0, 0, 0, 0.5)');
-        gradient.addColorStop(0.6, 'rgba(0, 0, 0, 0.25)');
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 0.7)');
+        gradient.addColorStop(0.6, 'rgba(0, 0, 0, 0.4)');
         gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, size, size);
@@ -171,7 +265,7 @@ export class Kart {
         shadow.material.opacity = opacityFromHeight;
 
         // Garder l'ombre au sol pendant les sauts
-        shadow.position.y = -jumpHeight - 0.45;
+        shadow.position.y = -jumpHeight + 0.02;
     }
 
     static updateFrontWheelSteering(kartGroup, steerAngle) {

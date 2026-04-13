@@ -248,17 +248,22 @@ export class ParticleSystem {
         });
     }
 
-    // Flammes d'échappement en boost
+    // Flammes d'échappement en boost — alignées sur les 2 pots (±0.6, y=0.55, z=-2.2)
     spawnBoostExhaust(player) {
+        const exhaustColors = [0xff6600, 0xffaa00, 0xff3300];
+        const offsetBack = -2.4;
+        const exhaustPipes = [-0.6, 0.6];
+        const kartY = (player._renderY !== undefined ? player._renderY : player.y) + (player.jumpHeight || 0);
+
         if (this.isMobile) {
-            // Mobile : une seule flamme via le pool
-            const exhaustColors = [0xff6600, 0xffaa00, 0xff3300];
+            // Mobile : une seule flamme, alternance gauche/droite
+            this._exhaustSide = (this._exhaustSide || 0) ^ 1;
+            const offsetSide = exhaustPipes[this._exhaustSide];
             const color = exhaustColors[Math.floor(Math.random() * exhaustColors.length)];
-            const offsetBack = -2;
             this.mobilePool.spawn(
-                player.x + Math.sin(player.angle) * offsetBack,
-                player.y + 0.4,
-                player.z + Math.cos(player.angle) * offsetBack,
+                player.x + Math.sin(player.angle) * offsetBack + Math.cos(player.angle) * offsetSide,
+                kartY + 0.55,
+                player.z + Math.cos(player.angle) * offsetBack - Math.sin(player.angle) * offsetSide,
                 color,
                 {
                     x: -Math.sin(player.angle) * 0.1 + (Math.random() - 0.5) * 0.05,
@@ -270,8 +275,7 @@ export class ParticleSystem {
             return;
         }
 
-        // Desktop
-        const exhaustColors = [0xff6600, 0xffaa00, 0xff3300];
+        // Desktop : une particule par pot d'échappement
         for (let i = 0; i < 2; i++) {
             const color = exhaustColors[Math.floor(Math.random() * exhaustColors.length)];
             const size = 0.2 + Math.random() * 0.2;
@@ -282,11 +286,10 @@ export class ParticleSystem {
                 opacity: 0.8
             });
             const particle = new THREE.Mesh(geometry, material);
-            const offsetSide = (Math.random() - 0.5) * 1.5;
-            const offsetBack = -2;
+            const offsetSide = exhaustPipes[i] + (Math.random() - 0.5) * 0.1;
             particle.position.set(
                 player.x + Math.sin(player.angle) * offsetBack + Math.cos(player.angle) * offsetSide,
-                player.y + 0.4 + Math.random() * 0.3,
+                kartY + 0.55 + Math.random() * 0.15,
                 player.z + Math.cos(player.angle) * offsetBack - Math.sin(player.angle) * offsetSide
             );
             this.scene.add(particle);
